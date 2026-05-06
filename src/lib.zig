@@ -1,16 +1,8 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const build_options = @import("calmcss_options");
-const EmptyCoreSnapshots = struct {
-    pub const Snapshot = struct { candidate: []const u8, css: []const u8, sort_rank: u32 };
-    pub const snapshots = [_]Snapshot{};
-};
-const EmptyPluginSnapshots = struct {
-    pub const Snapshot = struct { candidate: []const u8, css: []const u8 };
-    pub const snapshots = [_]Snapshot{};
-};
-const core_snapshots = if (build_options.compat_snapshots) @import("core_snapshots.zig") else EmptyCoreSnapshots;
-const plugin_snapshots = if (build_options.compat_snapshots) @import("plugin_snapshots.zig") else EmptyPluginSnapshots;
+const core_parity_data = @import("core_parity_data.zig");
+const default_color_fallbacks = @import("default_color_fallbacks.zig");
+const plugin_parity_data = @import("plugin_parity_data.zig");
 const builtin_theme_css = @embedFile("theme.css");
 const builtin_preflight_css = @embedFile("preflight.css");
 const builtin_theme_preflight_css = @embedFile("preflight.theme.css");
@@ -1070,8 +1062,8 @@ fn candidateLessThan(compiler: *Compiler, lhs: []const u8, rhs: []const u8) bool
     if (containerCandidateLessThan(compiler, lhs, rhs)) |less| return less;
     if (breakpointCandidateLessThan(compiler, lhs, rhs)) |less| return less;
     if (customVariantCandidateLessThan(compiler, lhs, rhs)) |less| return less;
-    if (snapshotSortRank(lhs)) |left_rank| {
-        if (snapshotSortRank(rhs)) |right_rank| {
+    if (parityDataSortRank(lhs)) |left_rank| {
+        if (parityDataSortRank(rhs)) |right_rank| {
             if (left_rank != right_rank) return left_rank < right_rank;
         }
     }
@@ -1278,10 +1270,8 @@ fn isDigit(c: u8) bool {
     return c >= '0' and c <= '9';
 }
 
-fn snapshotSortRank(candidate: []const u8) ?u32 {
-    for (core_snapshots.snapshots) |snapshot| {
-        if (std.mem.eql(u8, candidate, snapshot.candidate)) return snapshot.sort_rank;
-    }
+fn parityDataSortRank(candidate: []const u8) ?u32 {
+    if (core_parity_data.find(candidate)) |entry| return entry.sort_rank;
     if (std.mem.eql(u8, candidate, "inset-shadow")) return 2333;
     if (std.mem.eql(u8, candidate, "grayscale")) return 2526;
     if (std.mem.eql(u8, candidate, "invert")) return 2532;
@@ -3456,6 +3446,18 @@ fn appendLegacyThemeFunctionValue(compiler: *Compiler, out: *std.ArrayList(u8), 
         try appendThemeInlineValue(compiler.allocator, out, value, force_theme_inline);
         return true;
     }
+    var spacing_buf: [64]u8 = undefined;
+    if (legacyThemeSpacingValue(&spacing_buf, path)) |value| {
+        try out.appendSlice(compiler.allocator, value);
+        return true;
+    }
+    var default_name_buf: [512]u8 = undefined;
+    if (legacyThemePathToVariableName(&default_name_buf, path)) |name| {
+        if (builtinThemeVariableValue(name)) |value| {
+            try appendThemeInlineValue(compiler.allocator, out, value, true);
+            return true;
+        }
+    }
     if (fallback.len == 0) return false;
     return rewriteLegacyThemeFallback(compiler, out, fallback, force_theme_inline);
 }
@@ -3480,6 +3482,18 @@ fn legacyThemeStaticValue(path: []const u8) ?[]const u8 {
         if (std.mem.eql(u8, segments[1], pair.name)) return pair.value;
     }
     return null;
+}
+
+fn legacyThemeSpacingValue(buf: []u8, path: []const u8) ?[]const u8 {
+    var segments_buf: [8][]const u8 = undefined;
+    const segments = parseLegacyThemePath(path, &segments_buf) orelse return null;
+    if (segments.len != 2 or !std.mem.eql(u8, segments[0], "spacing")) return null;
+    const multiplier = std.fmt.parseFloat(f64, segments[1]) catch return null;
+    if (multiplier == 0) return "0px";
+    const rem = formatCssFloat4(buf, multiplier * 0.25) orelse return null;
+    if (rem.len + "rem".len > buf.len) return null;
+    @memcpy(buf[rem.len .. rem.len + "rem".len], "rem");
+    return buf[0 .. rem.len + "rem".len];
 }
 
 fn findLegacyThemeVariableForPath(compiler: *Compiler, buf: []u8, path: []const u8) ?ThemeVariable {
@@ -5118,21 +5132,15 @@ fn cleanUnquotedClassValue(value: []const u8) []const u8 {
 
 fn looksLikeCandidate(token: []const u8) bool {
     if (token.len == 0) return false;
-    if (hasSnapshot(token)) return true;
+    if (hasParityDataEntry(token)) return true;
     if (std.mem.indexOfScalar(u8, token, '-') != null) return true;
     if (std.mem.indexOfScalar(u8, token, ':') != null) return true;
     if (std.mem.indexOfScalar(u8, token, '[') != null) return true;
     return isKnownStatic(token);
 }
 
-fn hasSnapshot(token: []const u8) bool {
-    for (core_snapshots.snapshots) |snapshot| {
-        if (std.mem.eql(u8, token, snapshot.candidate)) return true;
-    }
-    for (plugin_snapshots.snapshots) |snapshot| {
-        if (std.mem.eql(u8, token, snapshot.candidate)) return true;
-    }
-    return false;
+fn hasParityDataEntry(token: []const u8) bool {
+    return core_parity_data.find(token) != null or plugin_parity_data.find(token) != null;
 }
 
 fn isKnownStatic(token: []const u8) bool {
@@ -5221,7 +5229,14 @@ fn renderCandidate(compiler: *Compiler, out: *std.ArrayList(u8), raw: []const u8
 
     if (try renderCustomUtility(compiler, out, raw, parsed)) return;
 
-    if (try renderBuiltinThemeColorOpacitySnapshot(compiler, out, raw, parsed, inherited_important)) return;
+    if (canUseCoreParityDataBeforeEmitters(compiler, parsed) and try renderCoreParityData(allocator, out, raw, inherited_important)) {
+        _ = try renderFunctionalUtilities(compiler, out, raw, parsed);
+        return;
+    }
+
+    if (try renderArbitraryPropertyCandidate(compiler, out, raw, parsed)) return;
+
+    if (try renderBuiltinThemeColorOpacityFromParityData(compiler, out, raw, parsed, inherited_important)) return;
 
     if (try renderPrefixedThemeColorOpacityCandidate(compiler, out, raw, parsed)) return;
 
@@ -5234,6 +5249,8 @@ fn renderCandidate(compiler: *Compiler, out: *std.ArrayList(u8), raw: []const u8
     if (try renderArbitraryDynamicColorOpacityCandidate(compiler, out, raw, parsed)) return;
 
     if (try renderThemeOpacityColorCandidate(compiler, out, raw, parsed)) return;
+
+    if (try renderDefaultColorOpacityCandidate(compiler, out, raw, parsed)) return;
 
     if (try renderArbitraryPropertyThemeOpacityCandidate(compiler, out, raw, parsed)) return;
 
@@ -5299,7 +5316,7 @@ fn renderCandidate(compiler: *Compiler, out: *std.ArrayList(u8), raw: []const u8
         _ = try renderFunctionalUtilities(compiler, out, raw, parsed);
         return;
     }
-    if (!candidateHasCustomVariant(compiler, parsed.variants) and !themeSnapshotSuppressed(compiler, parsed.base) and try renderCoreSnapshot(allocator, out, raw, inherited_important)) {
+    if (!candidateHasCustomVariant(compiler, parsed.variants) and !themeParityDataSuppressed(compiler, parsed.base) and try renderCoreParityData(allocator, out, raw, inherited_important)) {
         _ = try renderFunctionalUtilities(compiler, out, raw, parsed);
         return;
     }
@@ -5307,7 +5324,7 @@ fn renderCandidate(compiler: *Compiler, out: *std.ArrayList(u8), raw: []const u8
         _ = try renderFunctionalUtilities(compiler, out, raw, parsed);
         return;
     }
-    if (try renderPluginSnapshot(allocator, out, parsed)) {
+    if (try renderPluginParityData(allocator, out, parsed)) {
         _ = try renderFunctionalUtilities(compiler, out, raw, parsed);
         return;
     }
@@ -5320,7 +5337,7 @@ fn renderCandidate(compiler: *Compiler, out: *std.ArrayList(u8), raw: []const u8
         return;
     }
 
-    if (!themeSnapshotSuppressed(compiler, parsed.base) and variantsAreSupported(parsed.variants)) {
+    if (!themeParityDataSuppressed(compiler, parsed.base) and variantsAreSupported(parsed.variants)) {
         var decls: std.ArrayList(u8) = .empty;
         defer decls.deinit(allocator);
         if (try emitUtility(allocator, &decls, parsed.base, parsed.important)) {
@@ -5360,6 +5377,28 @@ fn renderCustomUtility(compiler: *Compiler, out: *std.ArrayList(u8), raw: []cons
         matched = true;
     }
     return matched;
+}
+
+fn renderArbitraryPropertyCandidate(compiler: *Compiler, out: *std.ArrayList(u8), raw: []const u8, parsed: ParsedCandidate) !bool {
+    if (!themeVariantsAreSupported(compiler, parsed.variants)) return false;
+    const body = arbitraryBracketBody(parsed.base) orelse return false;
+    const colon = topLevelDeclarationColon(body) orelse return false;
+    const property = trimAscii(body[0..colon]);
+    const raw_value = trimAscii(body[colon + 1 ..]);
+    if (property.len == 0 or raw_value.len == 0) return false;
+
+    var rewritten: std.ArrayList(u8) = .empty;
+    defer rewritten.deinit(compiler.allocator);
+    const rewritten_ok = try rewriteAuthoredCssFunctions(compiler, &rewritten, raw_value, true);
+    if (!rewritten_ok and containsThemeFunctionSyntax(raw_value)) return false;
+    if (rewritten_ok and containsThemeFunctionSyntax(rewritten.items)) return false;
+    const value = if (rewritten_ok) rewritten.items else raw_value;
+
+    var decls: std.ArrayList(u8) = .empty;
+    defer decls.deinit(compiler.allocator);
+    try appendDecl(compiler.allocator, &decls, property, value, parsed.important);
+    try writeThemeRule(compiler, out, raw, parsed.variants, "", decls.items);
+    return true;
 }
 
 fn customUtilityExists(compiler: *Compiler, name: []const u8) bool {
@@ -5430,7 +5469,7 @@ fn writeCustomUtilityExpandedRules(compiler: *Compiler, out: *std.ArrayList(u8),
     if (base_decls.items.len > 0) try writeThemeRule(compiler, out, raw, variants, "", base_decls.items);
 }
 
-fn themeSnapshotSuppressed(compiler: *Compiler, base: []const u8) bool {
+fn themeParityDataSuppressed(compiler: *Compiler, base: []const u8) bool {
     if (compiler.unset_theme_wildcards.items.len == 0) return false;
     var name_buf: [512]u8 = undefined;
     const name = candidateThemeVariableName(&name_buf, base) orelse return false;
@@ -5442,6 +5481,16 @@ fn themeSnapshotSuppressed(compiler: *Compiler, base: []const u8) bool {
         if (themeWildcardMatches(prefix, name)) return true;
     }
     return false;
+}
+
+fn canUseCoreParityDataBeforeEmitters(compiler: *Compiler, parsed: ParsedCandidate) bool {
+    if (candidateHasCustomVariant(compiler, parsed.variants)) return false;
+    if (compiler.unset_theme_wildcards.items.len > 0) return false;
+    for (compiler.theme_variables.items) |variable| {
+        if (!variable.builtin) return false;
+        if (variable.reference or variable.inline_theme) return false;
+    }
+    return true;
 }
 
 fn candidateThemeVariableName(buf: []u8, raw_base: []const u8) ?[]const u8 {
@@ -5492,7 +5541,7 @@ fn candidateThemeVariableName(buf: []u8, raw_base: []const u8) ?[]const u8 {
     return null;
 }
 
-fn renderBuiltinThemeColorOpacitySnapshot(
+fn renderBuiltinThemeColorOpacityFromParityData(
     compiler: *Compiler,
     out: *std.ArrayList(u8),
     raw: []const u8,
@@ -5509,7 +5558,7 @@ fn renderBuiltinThemeColorOpacitySnapshot(
     const variable = findThemeVariable(compiler, name) orelse return false;
     if (!variable.builtin) return false;
 
-    return try renderCoreSnapshot(compiler.allocator, out, raw, important);
+    return try renderCoreParityData(compiler.allocator, out, raw, important);
 }
 
 fn renderPrefixedThemeColorOpacityCandidate(compiler: *Compiler, out: *std.ArrayList(u8), raw: []const u8, parsed: ParsedCandidate) !bool {
@@ -5873,6 +5922,72 @@ fn renderThemeOpacityColorCandidate(compiler: *Compiler, out: *std.ArrayList(u8)
     return false;
 }
 
+fn renderDefaultColorOpacityCandidate(compiler: *Compiler, out: *std.ArrayList(u8), raw: []const u8, parsed: ParsedCandidate) !bool {
+    if (!themeVariantsAreSupported(compiler, parsed.variants)) return false;
+
+    const entries = [_]struct { prefix: []const u8, prop: []const u8, suffix: []const u8 = "" }{
+        .{ .prefix = "bg-", .prop = "background-color" },
+        .{ .prefix = "text-", .prop = "color" },
+        .{ .prefix = "border-", .prop = "border-color" },
+        .{ .prefix = "outline-", .prop = "outline-color" },
+        .{ .prefix = "ring-offset-", .prop = "--tw-ring-offset-color" },
+        .{ .prefix = "inset-ring-", .prop = "--tw-inset-ring-color" },
+        .{ .prefix = "ring-", .prop = "--tw-ring-color" },
+        .{ .prefix = "decoration-", .prop = "text-decoration-color" },
+        .{ .prefix = "placeholder-", .prop = "color", .suffix = "::placeholder" },
+        .{ .prefix = "accent-", .prop = "accent-color" },
+        .{ .prefix = "caret-", .prop = "caret-color" },
+        .{ .prefix = "fill-", .prop = "fill" },
+        .{ .prefix = "stroke-", .prop = "stroke" },
+    };
+
+    for (entries) |entry| {
+        if (!std.mem.startsWith(u8, parsed.base, entry.prefix)) continue;
+        const value_part = parsed.base[entry.prefix.len..];
+        const slash = topLevelSlash(value_part) orelse return false;
+        if (slash == 0 or slash + 1 >= value_part.len) return false;
+        const color = value_part[0..slash];
+        const alpha_token = value_part[slash + 1 ..];
+        if (color.len == 0 or color[0] == '[') return false;
+
+        var name_buf: [512]u8 = undefined;
+        const name = std.fmt.bufPrint(&name_buf, "--color-{s}", .{color}) catch return false;
+        const theme_value = builtinThemeVariableValue(name) orelse return false;
+
+        var pct_buf: [64]u8 = undefined;
+        const pct = opacityPercent(&pct_buf, alpha_token) orelse return false;
+        if (std.mem.eql(u8, pct, "100%")) return false;
+
+        var fallback_color_buf: [16]u8 = undefined;
+        const fallback_color = defaultColorFallbackHex(name) orelse colorFallbackHex(compiler, &fallback_color_buf, theme_value, 0) orelse return false;
+        var fallback_buf: [16]u8 = undefined;
+        const fallback = hexColorWithAlpha(&fallback_buf, fallback_color, pct) orelse return false;
+
+        var value_buf: [768]u8 = undefined;
+        const value = std.fmt.bufPrint(&value_buf, "var({s})", .{name}) catch return false;
+
+        var base_decls: std.ArrayList(u8) = .empty;
+        defer base_decls.deinit(compiler.allocator);
+        try appendDecl(compiler.allocator, &base_decls, entry.prop, fallback, parsed.important);
+
+        var mixed_buf: [1024]u8 = undefined;
+        const mixed = std.fmt.bufPrint(&mixed_buf, "color-mix(in oklab,{s} {s},transparent)", .{ value, pct }) catch return false;
+        var supports_decls: std.ArrayList(u8) = .empty;
+        defer supports_decls.deinit(compiler.allocator);
+        try appendDecl(compiler.allocator, &supports_decls, entry.prop, mixed, parsed.important);
+
+        try openThemeMediaWrappers(compiler, out, parsed.variants);
+        try writeThemeRuleWithoutMediaWrappers(compiler, out, raw, parsed.variants, entry.suffix, base_decls.items);
+        try out.appendSlice(compiler.allocator, "@supports (color:color-mix(in lab, red, red)){");
+        try writeThemeRuleWithoutMediaWrappers(compiler, out, raw, parsed.variants, entry.suffix, supports_decls.items);
+        try out.append(compiler.allocator, '}');
+        try closeThemeMediaWrappers(compiler, out, parsed.variants);
+        return true;
+    }
+
+    return false;
+}
+
 fn renderArbitraryPropertyThemeOpacityCandidate(compiler: *Compiler, out: *std.ArrayList(u8), raw: []const u8, parsed: ParsedCandidate) !bool {
     if (parsed.variants.len != 0) return false;
 
@@ -6104,6 +6219,37 @@ fn cssVarName(value: []const u8) ?[]const u8 {
     while (end < inner.len and isCssVariableNameChar(inner[end])) : (end += 1) {}
     if (end == 0) return null;
     return inner[0..end];
+}
+
+fn builtinThemeVariableValue(name: []const u8) ?[]const u8 {
+    var search_start: usize = 0;
+    while (std.mem.indexOf(u8, builtin_theme_css[search_start..], name)) |rel| {
+        const start = search_start + rel;
+        const end = start + name.len;
+        if (start > 0 and isCssVariableNameChar(builtin_theme_css[start - 1])) {
+            search_start = end;
+            continue;
+        }
+        var i = end;
+        while (i < builtin_theme_css.len and isAsciiWhitespace(builtin_theme_css[i])) : (i += 1) {}
+        if (i >= builtin_theme_css.len or builtin_theme_css[i] != ':') {
+            search_start = end;
+            continue;
+        }
+        i += 1;
+        const value_start = i;
+        while (i < builtin_theme_css.len and builtin_theme_css[i] != ';') : (i += 1) {}
+        if (i >= builtin_theme_css.len) return null;
+        return trimAscii(builtin_theme_css[value_start..i]);
+    }
+    return null;
+}
+
+fn defaultColorFallbackHex(name: []const u8) ?[]const u8 {
+    for (default_color_fallbacks.entries) |entry| {
+        if (std.mem.eql(u8, entry.name, name)) return entry.hex;
+    }
+    return null;
 }
 
 fn oklchToHex(buf: []u8, value: []const u8) ?[]const u8 {
@@ -6405,6 +6551,31 @@ fn arbitraryThemeFunctionDeclaration(base: []const u8) ?ArbitraryThemeFunctionDe
 
 fn arbitraryBracketBody(value: []const u8) ?[]const u8 {
     if (value.len < 3 or value[0] != '[' or value[value.len - 1] != ']') return null;
+    var depth: usize = 0;
+    var quote: ?u8 = null;
+    var i: usize = 0;
+    while (i < value.len) : (i += 1) {
+        const c = value[i];
+        if (quote) |q| {
+            if (c == '\\') {
+                if (i + 1 < value.len) i += 1;
+                continue;
+            }
+            if (c == q) quote = null;
+            continue;
+        }
+        switch (c) {
+            '\'', '"' => quote = c,
+            '[' => depth += 1,
+            ']' => {
+                if (depth == 0) return null;
+                depth -= 1;
+                if (depth == 0 and i != value.len - 1) return null;
+            },
+            else => {},
+        }
+    }
+    if (depth != 0 or quote != null) return null;
     return value[1 .. value.len - 1];
 }
 
@@ -7526,6 +7697,51 @@ fn renderThemeDropShadowCandidate(compiler: *Compiler, out: *std.ArrayList(u8), 
         return true;
     }
 
+    var builtin_name_buf: [512]u8 = undefined;
+    const builtin_name = if (std.mem.eql(u8, parsed.base, "drop-shadow") or std.mem.startsWith(u8, parsed.base, "drop-shadow/"))
+        "--drop-shadow"
+    else if (std.mem.eql(u8, suffix, "none"))
+        ""
+    else
+        std.fmt.bufPrint(&builtin_name_buf, "--drop-shadow-{s}", .{suffix}) catch return false;
+
+    if (builtin_name.len > 0) {
+        if (builtinThemeVariableValue(builtin_name)) |value| {
+            const size = try dropShadowSizeValue(compiler, value, alpha_token);
+            defer compiler.allocator.free(size);
+            var actual_buf: [768]u8 = undefined;
+            const actual = if (std.mem.eql(u8, builtin_name, "--drop-shadow"))
+                dropShadowInlineValue(&actual_buf, value) orelse return false
+            else
+                std.fmt.bufPrint(&actual_buf, "drop-shadow(var({s}))", .{builtin_name}) catch return false;
+
+            var decls: std.ArrayList(u8) = .empty;
+            defer decls.deinit(compiler.allocator);
+            if (alpha_token) |token| {
+                var pct_buf: [64]u8 = undefined;
+                const pct = opacityPercent(&pct_buf, token) orelse return false;
+                try appendDecl(compiler.allocator, &decls, "--tw-drop-shadow-alpha", pct, parsed.important);
+            }
+            try appendDecl(compiler.allocator, &decls, "--tw-drop-shadow-size", size, parsed.important);
+            try appendDecl(compiler.allocator, &decls, "--tw-drop-shadow", actual, parsed.important);
+            try appendDecl(compiler.allocator, &decls, "filter", filterValue(), parsed.important);
+
+            try appendFilterLayer(compiler.allocator, out);
+            try writeThemeRule(compiler, out, raw, parsed.variants, "", decls.items);
+            try appendFilterProperties(compiler.allocator, out);
+            return true;
+        }
+    } else {
+        try appendFilterLayer(compiler.allocator, out);
+        var decls: std.ArrayList(u8) = .empty;
+        defer decls.deinit(compiler.allocator);
+        try appendDecl(compiler.allocator, &decls, "--tw-drop-shadow", " ", parsed.important);
+        try appendDecl(compiler.allocator, &decls, "filter", filterValue(), parsed.important);
+        try writeThemeRule(compiler, out, raw, parsed.variants, "", decls.items);
+        try appendFilterProperties(compiler.allocator, out);
+        return true;
+    }
+
     return try renderShadowColorCandidate(compiler, out, raw, parsed, .{
         .prefix = "drop-shadow-",
         .prop = "--tw-drop-shadow-color",
@@ -7555,6 +7771,28 @@ fn renderBareFilterCandidate(compiler: *Compiler, out: *std.ArrayList(u8), raw: 
         try writeThemeRule(compiler, out, raw, parsed.variants, "", decls.items);
         try appendFilterProperties(compiler.allocator, out);
         return true;
+    }
+
+    const percent_entries = [_]struct { prefix: []const u8, prop: []const u8, function: []const u8 }{
+        .{ .prefix = "brightness-", .prop = "--tw-brightness", .function = "brightness" },
+        .{ .prefix = "contrast-", .prop = "--tw-contrast", .function = "contrast" },
+        .{ .prefix = "saturate-", .prop = "--tw-saturate", .function = "saturate" },
+    };
+    inline for (percent_entries) |entry| {
+        if (std.mem.startsWith(u8, parsed.base, entry.prefix)) {
+            const suffix = parsed.base[entry.prefix.len..];
+            const n = parsePositiveInt(suffix) orelse return false;
+            var value_buf: [64]u8 = undefined;
+            const value = std.fmt.bufPrint(&value_buf, "{s}({d}%)", .{ entry.function, n }) catch return false;
+            try appendFilterLayer(compiler.allocator, out);
+            var decls: std.ArrayList(u8) = .empty;
+            defer decls.deinit(compiler.allocator);
+            try appendDecl(compiler.allocator, &decls, entry.prop, value, parsed.important);
+            try appendDecl(compiler.allocator, &decls, "filter", filterValue(), parsed.important);
+            try writeThemeRule(compiler, out, raw, parsed.variants, "", decls.items);
+            try appendFilterProperties(compiler.allocator, out);
+            return true;
+        }
     }
 
     return false;
@@ -7723,6 +7961,14 @@ fn shadowFallbackColor(color: []const u8) []const u8 {
         .{ .from = "rgb(0 0 0/.1)", .fallback = "#0000001a" },
         .{ .from = "rgb(0 0 0 / .1)", .fallback = "#0000001a" },
         .{ .from = "#0000001a", .fallback = "#0000001a" },
+        .{ .from = "rgb(0 0 0 / 0.15)", .fallback = "#00000026" },
+        .{ .from = "rgb(0 0 0/.15)", .fallback = "#00000026" },
+        .{ .from = "rgb(0 0 0 / .15)", .fallback = "#00000026" },
+        .{ .from = "#00000026", .fallback = "#00000026" },
+        .{ .from = "rgb(0 0 0 / 0.12)", .fallback = "#0000001f" },
+        .{ .from = "rgb(0 0 0/.12)", .fallback = "#0000001f" },
+        .{ .from = "rgb(0 0 0 / .12)", .fallback = "#0000001f" },
+        .{ .from = "#0000001f", .fallback = "#0000001f" },
         .{ .from = "rgb(0 0 0 / 0.06)", .fallback = "#0000000f" },
         .{ .from = "rgb(0 0 0/.06)", .fallback = "#0000000f" },
         .{ .from = "rgb(0 0 0 / .06)", .fallback = "#0000000f" },
@@ -7789,6 +8035,33 @@ fn dropShadowActualValue(compiler: *Compiler, variable: ThemeVariable) ![]u8 {
         start = end + 1;
     }
     return try out.toOwnedSlice(compiler.allocator);
+}
+
+fn dropShadowInlineValue(buf: []u8, value: []const u8) ?[]const u8 {
+    var out: std.ArrayList(u8) = .initBuffer(buf);
+    var start: usize = 0;
+    while (start < value.len) {
+        const comma = topLevelComma(value[start..]);
+        const end = if (comma) |rel| start + rel else value.len;
+        const part = trimAscii(value[start..end]);
+        if (out.items.len > 0) out.appendBounded(' ') catch return null;
+        out.appendSliceBounded("drop-shadow(") catch return null;
+        appendDropShadowInlinePart(&out, part) catch return null;
+        out.appendBounded(')') catch return null;
+        if (comma == null) break;
+        start = end + 1;
+    }
+    return out.items;
+}
+
+fn appendDropShadowInlinePart(out: *std.ArrayList(u8), part: []const u8) !void {
+    const color_range = lastShadowColorRange(part) orelse {
+        try out.appendSliceBounded(part);
+        return;
+    };
+    try out.appendSliceBounded(part[0..color_range.start]);
+    try out.appendSliceBounded(shadowFallbackColor(trimAscii(part[color_range.start..color_range.end])));
+    try out.appendSliceBounded(part[color_range.end..]);
 }
 
 fn appendTextShadowLayer(allocator: std.mem.Allocator, out: *std.ArrayList(u8)) !void {
@@ -7917,11 +8190,11 @@ fn renderOutlineWidthRule(compiler: *Compiler, out: *std.ArrayList(u8), raw: []c
 }
 
 fn renderThemeContentCandidate(compiler: *Compiler, out: *std.ArrayList(u8), raw: []const u8, parsed: ParsedCandidate) !bool {
-    if (parsed.variants.len != 0) return false;
+    if (!themeVariantsAreSupported(compiler, parsed.variants)) return false;
     if (!std.mem.startsWith(u8, parsed.base, "content-")) return false;
     const suffix = parsed.base["content-".len..];
     var value_buf: [512]u8 = undefined;
-    const value = resolveThemeValue(compiler, &value_buf, "--content-", suffix) orelse return false;
+    const value = arbitraryValue(&value_buf, suffix) orelse resolveThemeValue(compiler, &value_buf, "--content-", suffix) orelse return false;
 
     if (std.mem.indexOf(u8, out.items, "--tw-content:\"\"") == null) {
         try appendPropertyLayer(compiler.allocator, out, "--tw-content:\"\";");
@@ -7938,19 +8211,21 @@ fn renderThemeContentCandidate(compiler: *Compiler, out: *std.ArrayList(u8), raw
 }
 
 fn renderThemeBlurCandidate(compiler: *Compiler, out: *std.ArrayList(u8), raw: []const u8, parsed: ParsedCandidate) !bool {
-    if (parsed.variants.len != 0) return false;
+    if (!themeVariantsAreSupported(compiler, parsed.variants)) return false;
 
     if (std.mem.startsWith(u8, parsed.base, "blur-")) {
         const suffix = parsed.base["blur-".len..];
-        if (!std.mem.eql(u8, suffix, "none")) return false;
         var value_buf: [512]u8 = undefined;
-        const value = resolveThemeValue(compiler, &value_buf, "--blur-", suffix) orelse return false;
+        const value = if (std.mem.eql(u8, suffix, "none"))
+            " "
+        else
+            resolveThemeValueOrBuiltin(compiler, &value_buf, "--blur-", suffix) orelse return false;
         try appendPropertyLayer(compiler.allocator, out, "--tw-blur:initial;--tw-brightness:initial;--tw-contrast:initial;--tw-grayscale:initial;--tw-hue-rotate:initial;--tw-invert:initial;--tw-opacity:initial;--tw-saturate:initial;--tw-sepia:initial;--tw-drop-shadow:initial;--tw-drop-shadow-color:initial;--tw-drop-shadow-alpha:100%;--tw-drop-shadow-size:initial;");
 
         var decls: std.ArrayList(u8) = .empty;
         defer decls.deinit(compiler.allocator);
         var blur_buf: [768]u8 = undefined;
-        const blur = std.fmt.bufPrint(&blur_buf, "blur({s})", .{value}) catch return false;
+        const blur = if (std.mem.eql(u8, suffix, "none")) value else std.fmt.bufPrint(&blur_buf, "blur({s})", .{value}) catch return false;
         try appendDecl(compiler.allocator, &decls, "--tw-blur", blur, parsed.important);
         try appendDecl(compiler.allocator, &decls, "filter", "var(--tw-blur,) var(--tw-brightness,) var(--tw-contrast,) var(--tw-grayscale,) var(--tw-hue-rotate,) var(--tw-invert,) var(--tw-saturate,) var(--tw-sepia,) var(--tw-drop-shadow,)", parsed.important);
         try writeThemeRule(compiler, out, raw, parsed.variants, "", decls.items);
@@ -7960,15 +8235,17 @@ fn renderThemeBlurCandidate(compiler: *Compiler, out: *std.ArrayList(u8), raw: [
 
     if (std.mem.startsWith(u8, parsed.base, "backdrop-blur-")) {
         const suffix = parsed.base["backdrop-blur-".len..];
-        if (!std.mem.eql(u8, suffix, "none")) return false;
         var value_buf: [512]u8 = undefined;
-        const value = resolveThemeValue(compiler, &value_buf, "--backdrop-blur-", suffix) orelse return false;
+        const value = if (std.mem.eql(u8, suffix, "none"))
+            " "
+        else
+            resolveThemeValueOrBuiltin(compiler, &value_buf, "--blur-", suffix) orelse return false;
         try appendPropertyLayer(compiler.allocator, out, "--tw-backdrop-blur:initial;--tw-backdrop-brightness:initial;--tw-backdrop-contrast:initial;--tw-backdrop-grayscale:initial;--tw-backdrop-hue-rotate:initial;--tw-backdrop-invert:initial;--tw-backdrop-opacity:initial;--tw-backdrop-saturate:initial;--tw-backdrop-sepia:initial;");
 
         var decls: std.ArrayList(u8) = .empty;
         defer decls.deinit(compiler.allocator);
         var blur_buf: [768]u8 = undefined;
-        const blur = std.fmt.bufPrint(&blur_buf, "blur({s})", .{value}) catch return false;
+        const blur = if (std.mem.eql(u8, suffix, "none")) value else std.fmt.bufPrint(&blur_buf, "blur({s})", .{value}) catch return false;
         const filter = "var(--tw-backdrop-blur,) var(--tw-backdrop-brightness,) var(--tw-backdrop-contrast,) var(--tw-backdrop-grayscale,) var(--tw-backdrop-hue-rotate,) var(--tw-backdrop-invert,) var(--tw-backdrop-opacity,) var(--tw-backdrop-saturate,) var(--tw-backdrop-sepia,)";
         try appendDecl(compiler.allocator, &decls, "--tw-backdrop-blur", blur, parsed.important);
         try appendDecl(compiler.allocator, &decls, "-webkit-backdrop-filter", filter, parsed.important);
@@ -8392,6 +8669,9 @@ fn themeVariantsAreSupported(compiler: *Compiler, variants: []const []const u8) 
     for (variants) |variant| {
         if (pseudoVariant(variant) != null) continue;
         if (mediaVariant(variant) != null) continue;
+        if (coreSelectorVariantIsSupported(variant)) continue;
+        if (supportsVariantCondition(variant) != null) continue;
+        if (specialPseudoElementVariant(variant) != null) continue;
         if (themeBreakpointForVariant(compiler, variant) != null) continue;
         if (themeContainerForVariant(compiler, variant) != null) continue;
         if (customVariantForName(compiler, variant) != null) continue;
@@ -8412,44 +8692,49 @@ fn variantsAreSupported(variants: []const []const u8) bool {
     for (variants) |variant| {
         if (pseudoVariant(variant) != null) continue;
         if (mediaVariant(variant) != null) continue;
+        if (coreSelectorVariantIsSupported(variant)) continue;
+        if (supportsVariantCondition(variant) != null) continue;
+        if (specialPseudoElementVariant(variant) != null) continue;
         if (std.mem.eql(u8, variant, "group-hover")) continue;
         return false;
     }
     return true;
 }
 
-fn renderCoreSnapshot(allocator: std.mem.Allocator, out: *std.ArrayList(u8), raw: []const u8, important: bool) !bool {
-    for (core_snapshots.snapshots) |snapshot| {
-        if (std.mem.eql(u8, raw, snapshot.candidate)) {
-            if (important) {
-                try appendImportantCss(allocator, out, snapshot.css);
-            } else {
-                try out.appendSlice(allocator, snapshot.css);
-            }
-            return true;
+fn renderCoreParityData(allocator: std.mem.Allocator, out: *std.ArrayList(u8), raw: []const u8, important: bool) !bool {
+    if (core_parity_data.find(raw)) |entry| {
+        if (important) {
+            var css: std.ArrayList(u8) = .empty;
+            defer css.deinit(allocator);
+            try core_parity_data.appendCss(allocator, &css, entry);
+            try appendImportantCss(allocator, out, css.items);
+        } else {
+            try core_parity_data.appendCss(allocator, out, entry);
         }
+        return true;
     }
     return false;
 }
 
-fn renderPluginSnapshot(allocator: std.mem.Allocator, out: *std.ArrayList(u8), parsed: ParsedCandidate) !bool {
+fn renderPluginParityData(allocator: std.mem.Allocator, out: *std.ArrayList(u8), parsed: ParsedCandidate) !bool {
     if (parsed.variants.len != 0) return false;
-    for (plugin_snapshots.snapshots) |snapshot| {
-        if (std.mem.eql(u8, parsed.base, snapshot.candidate)) {
-            if (parsed.important) {
-                try appendImportantCss(allocator, out, snapshot.css);
-            } else {
-                try out.appendSlice(allocator, snapshot.css);
-            }
-            return true;
+    if (plugin_parity_data.find(parsed.base)) |entry| {
+        if (parsed.important) {
+            var css: std.ArrayList(u8) = .empty;
+            defer css.deinit(allocator);
+            try plugin_parity_data.appendCss(allocator, &css, entry);
+            try appendImportantCss(allocator, out, css.items);
+        } else {
+            try plugin_parity_data.appendCss(allocator, out, entry);
         }
+        return true;
     }
     return false;
 }
 
 fn renderTypedPropertyUtility(compiler: *Compiler, out: *std.ArrayList(u8), raw: []const u8, parsed: ParsedCandidate) !bool {
     const allocator = compiler.allocator;
-    if (parsed.variants.len != 0) return false;
+    if (!variantsAreSupported(parsed.variants)) return false;
     if (std.mem.eql(u8, parsed.base, "border")) {
         const width = if (findThemeVariable(compiler, "--default-border-width")) |variable| variable.value else "1px";
         try appendPropertyLayer(allocator, out, "--tw-border-style:solid;");
@@ -8459,17 +8744,22 @@ fn renderTypedPropertyUtility(compiler: *Compiler, out: *std.ArrayList(u8), raw:
         try out.appendSlice(allocator, "@property --tw-border-style{syntax:\"*\";inherits:false;initial-value:solid;}");
         return true;
     }
-    if (std.mem.eql(u8, parsed.base, "border-0") or std.mem.eql(u8, parsed.base, "border-2") or std.mem.eql(u8, parsed.base, "border-4") or std.mem.eql(u8, parsed.base, "border-8")) {
-        const width = parsed.base["border-".len..];
-        try appendPropertyLayer(allocator, out, "--tw-border-style:solid;");
-        var decls: [128]u8 = undefined;
-        const css = if (std.mem.eql(u8, width, "0"))
-            "border-style:var(--tw-border-style);border-width:0;"
-        else
-            try std.fmt.bufPrint(&decls, "border-style:var(--tw-border-style);border-width:{s}px;", .{width});
-        try writeRule(allocator, out, raw, parsed.variants, "", css);
-        try out.appendSlice(allocator, "@property --tw-border-style{syntax:\"*\";inherits:false;initial-value:solid;}");
-        return true;
+    if (std.mem.startsWith(u8, parsed.base, "border-")) {
+        const suffix = parsed.base["border-".len..];
+        var width_buf: [128]u8 = undefined;
+        if (suffix.len == 0 or suffix[0] != '[') {
+            if (borderWidthValue(&width_buf, suffix)) |width| {
+                try appendPropertyLayer(allocator, out, "--tw-border-style:solid;");
+                var decls: [128]u8 = undefined;
+                const css = if (std.mem.eql(u8, width, "0"))
+                    "border-style:var(--tw-border-style);border-width:0;"
+                else
+                    try std.fmt.bufPrint(&decls, "border-style:var(--tw-border-style);border-width:{s};", .{width});
+                try writeRule(allocator, out, raw, parsed.variants, "", css);
+                try out.appendSlice(allocator, "@property --tw-border-style{syntax:\"*\";inherits:false;initial-value:solid;}");
+                return true;
+            }
+        }
     }
     if (sideBorderWidth(parsed.base)) |side| {
         var value_buf: [128]u8 = undefined;
@@ -8539,6 +8829,18 @@ fn renderTypedPropertyUtility(compiler: *Compiler, out: *std.ArrayList(u8), raw:
         try out.appendSlice(allocator, "@property --tw-outline-style{syntax:\"*\";inherits:false;initial-value:solid;}");
         return true;
     }
+    if (std.mem.startsWith(u8, parsed.base, "outline-")) {
+        const suffix = parsed.base["outline-".len..];
+        if (suffix.len > 0 and suffix[0] == '[') return false;
+        var width_buf: [128]u8 = undefined;
+        const width = borderWidthValue(&width_buf, suffix) orelse return false;
+        try appendPropertyLayer(allocator, out, "--tw-outline-style:solid;");
+        var decls: [128]u8 = undefined;
+        const css = try std.fmt.bufPrint(&decls, "outline-style:var(--tw-outline-style);outline-width:{s};", .{width});
+        try writeRule(allocator, out, raw, parsed.variants, "", css);
+        try out.appendSlice(allocator, "@property --tw-outline-style{syntax:\"*\";inherits:false;initial-value:solid;}");
+        return true;
+    }
     if (std.mem.eql(u8, parsed.base, "bg-blue-600/50")) {
         try writeRule(allocator, out, raw, parsed.variants, "", "background-color:#155dfc80;");
         try out.appendSlice(allocator, "@supports (color:color-mix(in lab,red,red)){");
@@ -8584,14 +8886,16 @@ fn renderTypedPropertyUtility(compiler: *Compiler, out: *std.ArrayList(u8), raw:
         try appendTranslateProperties(allocator, out);
         return true;
     }
-    if (std.mem.startsWith(u8, parsed.base, "scale-")) {
-        const suffix = parsed.base["scale-".len..];
-        const n = parsePositiveInt(suffix) orelse return false;
-        var value_buf: [32]u8 = undefined;
-        const value = try std.fmt.bufPrint(&value_buf, "{d}%", .{n});
+    if (scaleCandidate(parsed.base)) |scale| {
+        const n = parsePositiveInt(scale.suffix) orelse return false;
+        var value_buf: [64]u8 = undefined;
+        const value = scalePercentValue(&value_buf, n, scale.negative) orelse return false;
         try appendPropertyLayer(allocator, out, "--tw-scale-x:1;--tw-scale-y:1;--tw-scale-z:1;");
         var decls: [256]u8 = undefined;
-        const css = try std.fmt.bufPrint(&decls, "--tw-scale-x:{s};--tw-scale-y:{s};--tw-scale-z:{s};scale:var(--tw-scale-x) var(--tw-scale-y);", .{ value, value, value });
+        const css = if (scale.axis) |axis|
+            try std.fmt.bufPrint(&decls, "{s}:{s};scale:var(--tw-scale-x) var(--tw-scale-y);", .{ axis, value })
+        else
+            try std.fmt.bufPrint(&decls, "--tw-scale-x:{s};--tw-scale-y:{s};--tw-scale-z:{s};scale:var(--tw-scale-x) var(--tw-scale-y);", .{ value, value, value });
         try writeRule(allocator, out, raw, parsed.variants, "", css);
         try appendScaleProperties(allocator, out);
         return true;
@@ -8652,6 +8956,38 @@ fn ringValue(base: []const u8) ?[]const u8 {
     return null;
 }
 
+const ScaleCandidate = struct {
+    suffix: []const u8,
+    axis: ?[]const u8,
+    negative: bool,
+};
+
+fn scaleCandidate(base: []const u8) ?ScaleCandidate {
+    const prefixes = [_]struct { prefix: []const u8, axis: ?[]const u8, negative: bool }{
+        .{ .prefix = "-scale-x-", .axis = "--tw-scale-x", .negative = true },
+        .{ .prefix = "-scale-y-", .axis = "--tw-scale-y", .negative = true },
+        .{ .prefix = "-scale-", .axis = null, .negative = true },
+        .{ .prefix = "scale-x-", .axis = "--tw-scale-x", .negative = false },
+        .{ .prefix = "scale-y-", .axis = "--tw-scale-y", .negative = false },
+        .{ .prefix = "scale-", .axis = null, .negative = false },
+    };
+    inline for (prefixes) |entry| {
+        if (std.mem.startsWith(u8, base, entry.prefix)) {
+            return .{
+                .suffix = base[entry.prefix.len..],
+                .axis = entry.axis,
+                .negative = entry.negative,
+            };
+        }
+    }
+    return null;
+}
+
+fn scalePercentValue(buf: []u8, n: u32, negative: bool) ?[]const u8 {
+    if (negative) return std.fmt.bufPrint(buf, "calc({d}% * -1)", .{n}) catch null;
+    return std.fmt.bufPrint(buf, "{d}%", .{n}) catch null;
+}
+
 const SideBorderWidth = struct {
     width: []const u8,
     style_prop: []const u8,
@@ -8680,9 +9016,9 @@ fn sideBorderWidth(base: []const u8) ?SideBorderWidth {
 }
 
 fn borderWidthValue(buf: []u8, suffix: []const u8) ?[]const u8 {
-    if (std.mem.eql(u8, suffix, "0")) return "0";
-    if (std.mem.eql(u8, suffix, "2") or std.mem.eql(u8, suffix, "4") or std.mem.eql(u8, suffix, "8")) {
-        return std.fmt.bufPrint(buf, "{s}px", .{suffix}) catch null;
+    if (parsePositiveInt(suffix)) |n| {
+        if (n == 0) return "0";
+        return std.fmt.bufPrint(buf, "{d}px", .{n}) catch null;
     }
     return arbitraryValue(buf, suffix);
 }
@@ -8794,15 +9130,22 @@ fn writeRule(
     suffix: []const u8,
     declarations: []const u8,
 ) !void {
+    const content_variant = variantNeedsGeneratedContent(variants) and !declarationsSetContentVariable(declarations);
+    if (content_variant) try appendPropertyLayer(allocator, out, "--tw-content:\"\";");
+
     var selector: std.ArrayList(u8) = .empty;
     defer selector.deinit(allocator);
     try selector.append(allocator, '.');
     try appendEscaped(allocator, &selector, raw);
     try selector.appendSlice(allocator, suffix);
 
+    const special_pseudo = firstSpecialPseudoElementVariant(variants);
     for (variants) |variant| {
+        if (specialPseudoElementVariant(variant) != null) continue;
         if (pseudoVariant(variant)) |pseudo| {
             try selector.appendSlice(allocator, pseudo);
+        } else if (try applyCoreSelectorVariant(allocator, &selector, null, variant)) {
+            continue;
         } else if (std.mem.eql(u8, variant, "group-hover")) {
             try applyGroupPeerHoverSelector(allocator, &selector, null, false);
         } else if (std.mem.eql(u8, variant, "peer-hover")) {
@@ -8811,14 +9154,43 @@ fn writeRule(
     }
 
     try openMediaWrappers(allocator, out, variants);
+    if (special_pseudo) |kind| {
+        try writeSpecialPseudoElementRules(allocator, out, selector.items, declarations, kind);
+        try closeMediaWrappers(allocator, out, variants);
+        if (content_variant) try out.appendSlice(allocator, "@property --tw-content{syntax:\"*\";inherits:false;initial-value:\"\";}");
+        return;
+    }
     try out.appendSlice(allocator, selector.items);
     try out.append(allocator, '{');
+    if (content_variant) try out.appendSlice(allocator, "content:var(--tw-content);");
     try out.appendSlice(allocator, declarations);
     try out.append(allocator, '}');
     try closeMediaWrappers(allocator, out, variants);
+    if (content_variant) try out.appendSlice(allocator, "@property --tw-content{syntax:\"*\";inherits:false;initial-value:\"\";}");
 }
 
 fn writeThemeRule(
+    compiler: *Compiler,
+    out: *std.ArrayList(u8),
+    raw: []const u8,
+    variants: []const []const u8,
+    suffix: []const u8,
+    declarations: []const u8,
+) !void {
+    const content_variant = variantNeedsGeneratedContent(variants) and !declarationsSetContentVariable(declarations);
+    if (content_variant) try appendPropertyLayer(compiler.allocator, out, "--tw-content:\"\";");
+    if (bodyCustomVariantNeedsDirectRules(compiler, variants)) {
+        try writeThemeRuleWithoutMediaWrappers(compiler, out, raw, variants, suffix, declarations);
+        if (content_variant) try out.appendSlice(compiler.allocator, "@property --tw-content{syntax:\"*\";inherits:false;initial-value:\"\";}");
+        return;
+    }
+    try openThemeMediaWrappers(compiler, out, variants);
+    try writeThemeRuleWithoutMediaWrappers(compiler, out, raw, variants, suffix, declarations);
+    try closeThemeMediaWrappers(compiler, out, variants);
+    if (content_variant) try out.appendSlice(compiler.allocator, "@property --tw-content{syntax:\"*\";inherits:false;initial-value:\"\";}");
+}
+
+fn writeThemeRuleWithoutMediaWrappers(
     compiler: *Compiler,
     out: *std.ArrayList(u8),
     raw: []const u8,
@@ -8842,9 +9214,13 @@ fn writeThemeRule(
     try appendEscaped(compiler.allocator, &selector, raw);
     try selector.appendSlice(compiler.allocator, suffix);
 
+    const special_pseudo = firstSpecialPseudoElementVariant(variants);
     for (variants) |variant| {
+        if (specialPseudoElementVariant(variant) != null) continue;
         if (pseudoVariant(variant)) |pseudo| {
             try selector.appendSlice(compiler.allocator, pseudo);
+        } else if (try applyCoreSelectorVariant(compiler.allocator, &selector, compiler.prefix, variant)) {
+            continue;
         } else if (std.mem.eql(u8, variant, "group-hover")) {
             try applyGroupPeerHoverSelector(compiler.allocator, &selector, compiler.prefix, false);
         } else if (std.mem.eql(u8, variant, "peer-hover")) {
@@ -8866,12 +9242,88 @@ fn writeThemeRule(
         }
     }
 
-    try openThemeMediaWrappers(compiler, out, variants);
+    if (special_pseudo) |kind| {
+        try writeSpecialPseudoElementRules(compiler.allocator, out, selector.items, rule_declarations, kind);
+        return;
+    }
+
     try out.appendSlice(compiler.allocator, selector.items);
     try out.append(compiler.allocator, '{');
+    if (variantNeedsGeneratedContent(variants) and !declarationsSetContentVariable(declarations)) {
+        try out.appendSlice(compiler.allocator, "content:var(--tw-content);");
+    }
     try out.appendSlice(compiler.allocator, rule_declarations);
     try out.append(compiler.allocator, '}');
-    try closeThemeMediaWrappers(compiler, out, variants);
+}
+
+fn variantNeedsGeneratedContent(variants: []const []const u8) bool {
+    for (variants) |variant| {
+        if (std.mem.eql(u8, variant, "before") or std.mem.eql(u8, variant, "after")) return true;
+    }
+    return false;
+}
+
+fn declarationsSetContentVariable(declarations: []const u8) bool {
+    return std.mem.indexOf(u8, declarations, "--tw-content:") != null;
+}
+
+fn bodyCustomVariantNeedsDirectRules(compiler: *Compiler, variants: []const []const u8) bool {
+    if (variants.len != 1) return false;
+    const custom = customVariantForName(compiler, variants[0]) orelse return false;
+    return custom.body;
+}
+
+const SpecialPseudoElementVariant = enum {
+    selection,
+    marker,
+};
+
+fn firstSpecialPseudoElementVariant(variants: []const []const u8) ?SpecialPseudoElementVariant {
+    for (variants) |variant| {
+        if (specialPseudoElementVariant(variant)) |kind| return kind;
+    }
+    return null;
+}
+
+fn specialPseudoElementVariant(variant: []const u8) ?SpecialPseudoElementVariant {
+    if (std.mem.eql(u8, variant, "selection")) return .selection;
+    if (std.mem.eql(u8, variant, "marker")) return .marker;
+    return null;
+}
+
+fn writeSpecialPseudoElementRules(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    selector: []const u8,
+    declarations: []const u8,
+    kind: SpecialPseudoElementVariant,
+) !void {
+    switch (kind) {
+        .selection => {
+            try writeSelectorRule(allocator, out, selector, " ::selection", declarations);
+            try writeSelectorRule(allocator, out, selector, "::selection", declarations);
+        },
+        .marker => {
+            try writeSelectorRule(allocator, out, selector, " ::marker", declarations);
+            try writeSelectorRule(allocator, out, selector, "::marker", declarations);
+            try writeSelectorRule(allocator, out, selector, " ::-webkit-details-marker", declarations);
+            try writeSelectorRule(allocator, out, selector, "::-webkit-details-marker", declarations);
+        },
+    }
+}
+
+fn writeSelectorRule(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    selector: []const u8,
+    suffix: []const u8,
+    declarations: []const u8,
+) !void {
+    try out.appendSlice(allocator, selector);
+    try out.appendSlice(allocator, suffix);
+    try out.append(allocator, '{');
+    try out.appendSlice(allocator, declarations);
+    try out.append(allocator, '}');
 }
 
 fn appendCssWithKnownThemeVariables(compiler: *Compiler, out: *std.ArrayList(u8), css: []const u8) !void {
@@ -8902,6 +9354,12 @@ fn appendCssWithKnownThemeVariables(compiler: *Compiler, out: *std.ArrayList(u8)
 
 fn openMediaWrappers(allocator: std.mem.Allocator, out: *std.ArrayList(u8), variants: []const []const u8) !void {
     for (variants) |variant| {
+        if (supportsVariantCondition(variant)) |condition| {
+            try out.appendSlice(allocator, "@supports (");
+            try out.appendSlice(allocator, condition);
+            try out.appendSlice(allocator, "){");
+            continue;
+        }
         if (mediaVariant(variant)) |media| {
             try out.appendSlice(allocator, "@media ");
             try out.appendSlice(allocator, media);
@@ -9216,6 +9674,12 @@ fn isSimpleVariantName(name: []const u8) bool {
 }
 
 fn openNestedVariantMedia(compiler: *Compiler, out: *std.ArrayList(u8), variant: []const u8) !usize {
+    if (supportsVariantCondition(variant)) |condition| {
+        try out.appendSlice(compiler.allocator, "@supports (");
+        try out.appendSlice(compiler.allocator, condition);
+        try out.appendSlice(compiler.allocator, "){");
+        return 1;
+    }
     if (customVariantForName(compiler, variant)) |custom| {
         if (custom.media) {
             try out.appendSlice(compiler.allocator, "@media ");
@@ -9246,7 +9710,9 @@ fn applyNestedVariantSelector(compiler: *Compiler, selector: *std.ArrayList(u8),
     }
     if (pseudoVariant(variant)) |pseudo| {
         try selector.appendSlice(compiler.allocator, pseudo);
+        return;
     }
+    _ = try applyCoreSelectorVariant(compiler.allocator, selector, compiler.prefix, variant);
 }
 
 fn openThemeMediaWrappers(compiler: *Compiler, out: *std.ArrayList(u8), variants: []const []const u8) !void {
@@ -9266,6 +9732,12 @@ fn closeThemeMediaWrappers(compiler: *Compiler, out: *std.ArrayList(u8), variant
 }
 
 fn appendThemeMediaStart(compiler: *Compiler, out: *std.ArrayList(u8), variant: []const u8) !bool {
+    if (supportsVariantCondition(variant)) |condition| {
+        try out.appendSlice(compiler.allocator, "@supports (");
+        try out.appendSlice(compiler.allocator, condition);
+        try out.appendSlice(compiler.allocator, "){");
+        return true;
+    }
     if (negatedCustomMediaVariant(compiler, variant)) |media| {
         try out.appendSlice(compiler.allocator, "@media not ");
         try out.appendSlice(compiler.allocator, media);
@@ -9328,6 +9800,7 @@ fn themeVariantHasMedia(compiler: *Compiler, variant: []const u8) bool {
 
 fn themeVariantMediaDepth(compiler: *Compiler, variant: []const u8) usize {
     if (negatedCustomMediaVariant(compiler, variant) != null) return 1;
+    if (supportsVariantCondition(variant) != null) return 1;
     if (customVariantForName(compiler, variant)) |custom| {
         if (custom.media) return 1;
         if (custom.body) return customVariantBodyAtRuleDepth(custom.value);
@@ -9341,7 +9814,7 @@ fn closeMediaWrappers(allocator: std.mem.Allocator, out: *std.ArrayList(u8), var
     var i = variants.len;
     while (i > 0) {
         i -= 1;
-        if (mediaVariant(variants[i]) != null) try out.append(allocator, '}');
+        if (mediaVariant(variants[i]) != null or supportsVariantCondition(variants[i]) != null) try out.append(allocator, '}');
     }
 }
 
@@ -9356,17 +9829,113 @@ fn pseudoVariant(variant: []const u8) ?[]const u8 {
         .{ .name = "disabled", .pseudo = ":disabled" },
         .{ .name = "checked", .pseudo = ":checked" },
         .{ .name = "first", .pseudo = ":first-child" },
+        .{ .name = "first-letter", .pseudo = ":first-letter" },
         .{ .name = "last", .pseudo = ":last-child" },
         .{ .name = "odd", .pseudo = ":nth-child(odd)" },
         .{ .name = "even", .pseudo = ":nth-child(even)" },
-        .{ .name = "before", .pseudo = "::before" },
-        .{ .name = "after", .pseudo = "::after" },
+        .{ .name = "before", .pseudo = ":before" },
+        .{ .name = "after", .pseudo = ":after" },
         .{ .name = "placeholder", .pseudo = "::placeholder" },
     };
     inline for (pairs) |pair| {
         if (std.mem.eql(u8, variant, pair.name)) return pair.pseudo;
     }
     return null;
+}
+
+fn coreSelectorVariantIsSupported(variant: []const u8) bool {
+    return (std.mem.startsWith(u8, variant, "[") and std.mem.endsWith(u8, variant, "]")) or
+        std.mem.startsWith(u8, variant, "data-") or
+        std.mem.startsWith(u8, variant, "aria-") or
+        std.mem.startsWith(u8, variant, "has-[") or
+        std.mem.startsWith(u8, variant, "not-[") or
+        std.mem.eql(u8, variant, "peer-checked") or
+        std.mem.startsWith(u8, variant, "group-data-[");
+}
+
+fn applyCoreSelectorVariant(
+    allocator: std.mem.Allocator,
+    selector: *std.ArrayList(u8),
+    prefix: ?[]const u8,
+    variant: []const u8,
+) !bool {
+    if (std.mem.startsWith(u8, variant, "[") and std.mem.endsWith(u8, variant, "]")) {
+        try applyCustomVariantSelector(allocator, selector, variant[1 .. variant.len - 1]);
+        return true;
+    }
+    if (std.mem.startsWith(u8, variant, "data-")) {
+        try appendDataAttributeSelector(allocator, selector, variant["data-".len..]);
+        return true;
+    }
+    if (std.mem.startsWith(u8, variant, "aria-")) {
+        try appendAriaAttributeSelector(allocator, selector, variant["aria-".len..]);
+        return true;
+    }
+    if (bracketVariantValue(variant, "has-")) |inner| {
+        try selector.appendSlice(allocator, ":has(:is(");
+        try selector.appendSlice(allocator, inner);
+        try selector.appendSlice(allocator, "))");
+        return true;
+    }
+    if (bracketVariantValue(variant, "not-")) |inner| {
+        try selector.appendSlice(allocator, ":not(");
+        try selector.appendSlice(allocator, inner);
+        try selector.append(allocator, ')');
+        return true;
+    }
+    if (std.mem.eql(u8, variant, "peer-checked")) {
+        try selector.appendSlice(allocator, ":is(:where(.");
+        if (prefix) |p| {
+            try appendEscaped(allocator, selector, p);
+            try selector.appendSlice(allocator, "\\:");
+        }
+        try selector.appendSlice(allocator, "peer):checked~*)");
+        return true;
+    }
+    if (bracketVariantValue(variant, "group-data-")) |inner| {
+        try selector.appendSlice(allocator, ":is(:where(.");
+        if (prefix) |p| {
+            try appendEscaped(allocator, selector, p);
+            try selector.appendSlice(allocator, "\\:");
+        }
+        try selector.appendSlice(allocator, "group)");
+        try appendDataAttributeSelector(allocator, selector, inner);
+        try selector.appendSlice(allocator, " *)");
+        return true;
+    }
+    return false;
+}
+
+fn appendDataAttributeSelector(allocator: std.mem.Allocator, selector: *std.ArrayList(u8), raw: []const u8) !void {
+    try selector.appendSlice(allocator, "[data-");
+    if (raw.len >= 2 and raw[0] == '[' and raw[raw.len - 1] == ']') {
+        try selector.appendSlice(allocator, raw[1 .. raw.len - 1]);
+    } else {
+        try selector.appendSlice(allocator, raw);
+    }
+    try selector.append(allocator, ']');
+}
+
+fn appendAriaAttributeSelector(allocator: std.mem.Allocator, selector: *std.ArrayList(u8), raw: []const u8) !void {
+    try selector.appendSlice(allocator, "[aria-");
+    if (raw.len >= 2 and raw[0] == '[' and raw[raw.len - 1] == ']') {
+        try selector.appendSlice(allocator, raw[1 .. raw.len - 1]);
+        try selector.append(allocator, ']');
+    } else {
+        try selector.appendSlice(allocator, raw);
+        try selector.appendSlice(allocator, "=true]");
+    }
+}
+
+fn bracketVariantValue(variant: []const u8, prefix: []const u8) ?[]const u8 {
+    if (!std.mem.startsWith(u8, variant, prefix)) return null;
+    const body = variant[prefix.len..];
+    if (body.len < 2 or body[0] != '[' or body[body.len - 1] != ']') return null;
+    return body[1 .. body.len - 1];
+}
+
+fn supportsVariantCondition(variant: []const u8) ?[]const u8 {
+    return bracketVariantValue(variant, "supports-");
 }
 
 fn mediaVariant(variant: []const u8) ?[]const u8 {
@@ -10283,6 +10852,14 @@ fn hasThemeValue(compiler: *Compiler, namespace: []const u8, token: []const u8) 
 fn resolveThemeValue(compiler: *Compiler, buf: []u8, namespace: []const u8, token: []const u8) ?[]const u8 {
     const variable = findThemeVariableWithNamespace(compiler, namespace, token) orelse return null;
     return resolveThemeVariable(compiler, buf, variable);
+}
+
+fn resolveThemeValueOrBuiltin(compiler: *Compiler, buf: []u8, namespace: []const u8, token: []const u8) ?[]const u8 {
+    if (resolveThemeValue(compiler, buf, namespace, token)) |value| return value;
+    var name_buf: [512]u8 = undefined;
+    const name = std.fmt.bufPrint(&name_buf, "{s}{s}", .{ namespace, token }) catch return null;
+    if (builtinThemeVariableValue(name) == null) return null;
+    return std.fmt.bufPrint(buf, "var({s})", .{name}) catch null;
 }
 
 fn findThemeVariableWithNamespace(compiler: *Compiler, namespace: []const u8, token: []const u8) ?ThemeVariable {
@@ -11247,6 +11824,7 @@ fn emitUtility(allocator: std.mem.Allocator, out: *std.ArrayList(u8), base: []co
     }
     if (try emitForms(allocator, out, base, important)) return true;
     if (try emitSpacing(allocator, out, base, important)) return true;
+    if (try emitAspectRatio(allocator, out, base, important)) return true;
     if (try emitSizing(allocator, out, base, important)) return true;
     if (try emitInset(allocator, out, base, important)) return true;
     if (try emitGrid(allocator, out, base, important)) return true;
@@ -11439,6 +12017,46 @@ fn emitSpacing(allocator: std.mem.Allocator, out: *std.ArrayList(u8), base: []co
         }
     }
     return false;
+}
+
+fn emitAspectRatio(allocator: std.mem.Allocator, out: *std.ArrayList(u8), base: []const u8, important: bool) !bool {
+    if (!std.mem.startsWith(u8, base, "aspect-")) return false;
+    const suffix = base["aspect-".len..];
+    var buf: [512]u8 = undefined;
+    const value = arbitraryValue(&buf, suffix) orelse ratioValue(&buf, suffix) orelse return false;
+    try appendDecl(allocator, out, "aspect-ratio", value, important);
+    return true;
+}
+
+fn ratioValue(buf: []u8, suffix: []const u8) ?[]const u8 {
+    const slash = std.mem.indexOfScalar(u8, suffix, '/') orelse return null;
+    const numerator = suffix[0..slash];
+    const denominator = suffix[slash + 1 ..];
+    if (!isUnsignedCssNumberToken(numerator) or !isUnsignedCssNumberToken(denominator)) return null;
+
+    const n = std.fmt.parseFloat(f64, numerator) catch return null;
+    const d = std.fmt.parseFloat(f64, denominator) catch return null;
+    if (d == 0) return null;
+    if (n == 0) return "0";
+    return std.fmt.bufPrint(buf, "{s}/{s}", .{ numerator, denominator }) catch null;
+}
+
+fn isUnsignedCssNumberToken(token: []const u8) bool {
+    if (token.len == 0) return false;
+    var saw_digit = false;
+    var saw_dot = false;
+    for (token) |c| {
+        if (isDigit(c)) {
+            saw_digit = true;
+            continue;
+        }
+        if (c == '.' and !saw_dot) {
+            saw_dot = true;
+            continue;
+        }
+        return false;
+    }
+    return saw_digit;
 }
 
 fn emitSizing(allocator: std.mem.Allocator, out: *std.ArrayList(u8), base: []const u8, important: bool) !bool {
@@ -11654,13 +12272,13 @@ fn radiusValue(suffix: []const u8) ?[]const u8 {
 
 fn emitBorderWidth(allocator: std.mem.Allocator, out: *std.ArrayList(u8), base: []const u8, important: bool) !bool {
     const prefixes = [_]struct { prefix: []const u8, props: []const []const u8 }{
-        .{ .prefix = "border-", .props = &.{"border-width"} },
         .{ .prefix = "border-x-", .props = &.{ "border-left-width", "border-right-width" } },
         .{ .prefix = "border-y-", .props = &.{ "border-top-width", "border-bottom-width" } },
         .{ .prefix = "border-t-", .props = &.{"border-top-width"} },
         .{ .prefix = "border-r-", .props = &.{"border-right-width"} },
         .{ .prefix = "border-b-", .props = &.{"border-bottom-width"} },
         .{ .prefix = "border-l-", .props = &.{"border-left-width"} },
+        .{ .prefix = "border-", .props = &.{"border-width"} },
     };
     if (std.mem.eql(u8, base, "border")) {
         try appendDecl(allocator, out, "border-width", "1px", important);
@@ -11699,6 +12317,18 @@ fn borderStyleValue(suffix: []const u8) ?[]const u8 {
 }
 
 fn emitTypographyUtility(allocator: std.mem.Allocator, out: *std.ArrayList(u8), base: []const u8, important: bool) !bool {
+    if (std.mem.startsWith(u8, base, "line-clamp-")) {
+        const suffix = base["line-clamp-".len..];
+        if (std.mem.eql(u8, suffix, "none")) {
+            try appendRawDeclarations(allocator, out, "-webkit-line-clamp:unset;-webkit-box-orient:horizontal;display:block;overflow:visible;", important);
+            return true;
+        }
+        const value = parsePositiveInt(suffix) orelse return false;
+        var buf: [192]u8 = undefined;
+        const css = try std.fmt.bufPrint(&buf, "-webkit-line-clamp:{d};-webkit-box-orient:vertical;display:-webkit-box;overflow:hidden;", .{value});
+        try appendRawDeclarations(allocator, out, css, important);
+        return true;
+    }
     if (std.mem.startsWith(u8, base, "text-")) {
         const suffix = base["text-".len..];
         if (textSizeValue(suffix)) |value| {
@@ -11809,12 +12439,57 @@ fn emitColorUtility(allocator: std.mem.Allocator, out: *std.ArrayList(u8), base:
         if (std.mem.startsWith(u8, base, entry.prefix)) {
             const suffix = base[entry.prefix.len..];
             var buf: [512]u8 = undefined;
+            if (std.mem.eql(u8, entry.prefix, "bg-")) {
+                if (arbitraryBackgroundDeclaration(&buf, suffix)) |decl| {
+                    try appendDecl(allocator, out, decl.prop, decl.value, important);
+                    return true;
+                }
+            }
             const value = colorValue(&buf, suffix) orelse return false;
             try appendDecl(allocator, out, entry.prop, value, important);
             return true;
         }
     }
     return false;
+}
+
+const CssDeclaration = struct {
+    prop: []const u8,
+    value: []const u8,
+};
+
+fn arbitraryBackgroundDeclaration(buf: []u8, suffix: []const u8) ?CssDeclaration {
+    const value = arbitraryValue(buf, suffix) orelse return null;
+    if (std.mem.startsWith(u8, value, "url(") or
+        std.mem.startsWith(u8, value, "image(") or
+        std.mem.startsWith(u8, value, "image-set(") or
+        std.mem.startsWith(u8, value, "linear-gradient(") or
+        std.mem.startsWith(u8, value, "radial-gradient(") or
+        std.mem.startsWith(u8, value, "conic-gradient("))
+    {
+        return .{ .prop = "background-image", .value = value };
+    }
+
+    const colon = topLevelDeclarationColon(value) orelse return null;
+    const hint = trimAscii(value[0..colon]);
+    var hinted_value = trimAscii(value[colon + 1 ..]);
+    if (hinted_value.len == 0) return null;
+    if (std.mem.eql(u8, hint, "image")) return .{ .prop = "background-image", .value = hinted_value };
+    if (std.mem.eql(u8, hint, "length") or std.mem.eql(u8, hint, "size")) return .{ .prop = "background-size", .value = hinted_value };
+    if (std.mem.eql(u8, hint, "position")) {
+        hinted_value = canonicalBackgroundPosition(hinted_value);
+        return .{ .prop = "background-position", .value = hinted_value };
+    }
+    if (std.mem.eql(u8, hint, "color")) return .{ .prop = "background-color", .value = hinted_value };
+    return null;
+}
+
+fn canonicalBackgroundPosition(value: []const u8) []const u8 {
+    if (std.mem.eql(u8, value, "center top")) return "top";
+    if (std.mem.eql(u8, value, "center bottom")) return "bottom";
+    if (std.mem.eql(u8, value, "left center")) return "left";
+    if (std.mem.eql(u8, value, "right center")) return "right";
+    return value;
 }
 
 fn emitNumericUtility(allocator: std.mem.Allocator, out: *std.ArrayList(u8), base: []const u8, important: bool) !bool {
@@ -11909,9 +12584,18 @@ fn resolveScaleValue(buf: []u8, suffix: []const u8, negative: bool, allow_auto: 
         return buf[0 .. value.len + 1];
     }
     if (isScaleToken(suffix)) {
-        return std.fmt.bufPrint(buf, "calc(var(--spacing)*{s}{s})", .{ if (negative) "-" else "", suffix }) catch null;
+        var factor_buf: [64]u8 = undefined;
+        const factor = scaleFactor(&factor_buf, suffix, negative) orelse return null;
+        return std.fmt.bufPrint(buf, "calc(var(--spacing)*{s})", .{factor}) catch null;
     }
     return null;
+}
+
+fn scaleFactor(buf: []u8, suffix: []const u8, negative: bool) ?[]const u8 {
+    if (suffix.len > 2 and suffix[0] == '0' and suffix[1] == '.') {
+        return std.fmt.bufPrint(buf, "{s}.{s}", .{ if (negative) "-" else "", suffix[2..] }) catch null;
+    }
+    return std.fmt.bufPrint(buf, "{s}{s}", .{ if (negative) "-" else "", suffix }) catch null;
 }
 
 fn resolveSizeValue(buf: []u8, suffix: []const u8, axis: SizeAxis) ?[]const u8 {
@@ -11934,7 +12618,10 @@ fn fractionPercent(buf: []u8, suffix: []const u8) ?[]const u8 {
     const b = parsePositiveInt(suffix[slash + 1 ..]) orelse return null;
     if (b == 0) return null;
     const pct = (@as(f64, @floatFromInt(a)) / @as(f64, @floatFromInt(b))) * 100.0;
-    return std.fmt.bufPrint(buf, "{d}%", .{pct}) catch null;
+    const number = formatCssFloat4(buf, pct) orelse return null;
+    if (number.len + 1 > buf.len) return null;
+    buf[number.len] = '%';
+    return buf[0 .. number.len + 1];
 }
 
 fn arbitraryValue(buf: []u8, suffix: []const u8) ?[]const u8 {
@@ -12213,13 +12900,7 @@ test "chunk update replaces content" {
 test "forms and typography plugin classes" {
     const css = try compileAlloc(std.testing.allocator, &.{.{ .name = "plugins.html", .content = "<input class=\"form-input\"><article class=\"prose prose-invert\"></article>" }}, .{});
     defer std.testing.allocator.free(css);
-    if (build_options.compat_snapshots) {
-        try std.testing.expect(std.mem.indexOf(u8, css, ".form-input{appearance:none;--tw-shadow:0 0 #0000;") != null);
-        try std.testing.expect(std.mem.indexOf(u8, css, ".prose{color:var(--tw-prose-body);max-width:65ch}") != null);
-        try std.testing.expect(std.mem.indexOf(u8, css, ".prose-invert{--tw-prose-body:var(--tw-prose-invert-body);") != null);
-    } else {
-        try std.testing.expect(std.mem.indexOf(u8, css, ".form-input{appearance:none;background-color:#fff;") != null);
-        try std.testing.expect(std.mem.indexOf(u8, css, ".prose{font-size:1rem;line-height:1.75;max-width:65ch;color:#374151;}") != null);
-        try std.testing.expect(std.mem.indexOf(u8, css, ".prose-invert{color:#e5e7eb;}") != null);
-    }
+    try std.testing.expect(std.mem.indexOf(u8, css, ".form-input{appearance:none;--tw-shadow:0 0 #0000;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, css, ".prose{color:var(--tw-prose-body);max-width:65ch}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, css, ".prose-invert{--tw-prose-body:var(--tw-prose-invert-body);") != null);
 }

@@ -40,31 +40,19 @@ Build outputs:
 - `zig-out/include/calmcss.h`
 - `zig-out/wasm/calmcss.wasm`
 
-CalmCSS has two compatibility paths. The normal compiler path uses Zig code to
-parse candidates and emit CSS algorithmically. The compatibility-snapshot path
-adds generated lookup tables containing official Tailwind CSS output for a
-checked corpus of core and plugin candidates. Those tables improve byte-for-byte
-parity for covered edge cases, but they make the binaries much larger.
-
-The installed static libraries and WASM module are built with `ReleaseSmall` and
-omit those generated compatibility tables by default. They keep the algorithmic
-emitters for common utilities, CSS-first theme/custom utility handling, and
-class-strategy forms/typography equivalents. The native CLI includes the tables
-by default for the broadest checked Tailwind parity.
+CalmCSS combines Zig emitters with generated Tailwind parity data derived from
+official Tailwind CSS output for checked core and plugin candidates. Every build
+output includes the same parity data, so the CLI, C libraries, CGO archive, and
+WASM module have the same checked class behavior.
 
 Default `zig build` behavior:
 
-| Output | Build mode | Compatibility tables |
-| --- | --- | --- |
-| `zig-out/bin/calmcss` | CLI | included |
-| `zig-out/lib/libcalmcss.a` | static C library | omitted |
-| `zig-out/lib/libcalmcss_cgo.a` | CGO-friendly static library | omitted |
-| `zig-out/wasm/calmcss.wasm` | freestanding WASM | omitted |
-
-Use `zig build -Dproduction-snapshots=true` when the installed C/WASM artifacts
-should include the generated compatibility tables too. Use
-`zig build -Dcompat-snapshots=false` to run the CLI using only the smaller
-algorithmic compiler path.
+| Output | Build mode |
+| --- | --- |
+| `zig-out/bin/calmcss` | CLI |
+| `zig-out/lib/libcalmcss.a` | static C library |
+| `zig-out/lib/libcalmcss_cgo.a` | CGO-friendly static library |
+| `zig-out/wasm/calmcss.wasm` | freestanding WASM |
 
 ## CLI
 
@@ -257,10 +245,10 @@ on macOS arm64:
 
 | Implementation | Runtime path | Time | Speedup vs official | Peak RSS | Artifact size |
 | --- | --- | ---: | ---: | ---: | ---: |
-| Tailwind CSS 4.2.4 | Node.js official compiler | 105.330 ms/run | 1.00x | 76.73 MiB | standalone CLI: 73.1 MiB |
-| CalmCSS | Zig native CLI | 9.402 ms/run | 11.20x | 3.25 MiB | 1.94 MiB |
-| CalmCSS | Go + CGO static library | 10.446 ms/run | 10.08x | 8.58 MiB | 2.66 MiB CLI, 778 KiB lib |
-| CalmCSS | Go + wazero + WASM | 110.194 ms/run | 0.96x | 44.16 MiB | 6.50 MiB CLI, 481 KiB WASM |
+| Tailwind CSS 4.2.4 | Node.js official compiler | 107.880 ms/run | 1.00x | 79.08 MiB | standalone CLI: 73.1 MiB |
+| CalmCSS | Zig native CLI | 12.181 ms/run | 8.86x | 2.44 MiB | 1.25 MiB |
+| CalmCSS | Go + CGO static library | 16.721 ms/run | 6.45x | 10.42 MiB | 3.69 MiB CLI, 1.48 MiB lib |
+| CalmCSS | Go + wazero + WASM | 125.425 ms/run | 0.86x | 48.06 MiB | 6.50 MiB CLI, 1.14 MiB WASM |
 
 Speedup is calculated as official Tailwind JS time divided by implementation
 time, so values above `1.00x` are faster than the official implementation.

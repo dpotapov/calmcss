@@ -14,9 +14,9 @@ func TestCompile(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertContains(t, string(css), []string{
-		`.gap-4{gap:calc(var(--spacing)*4);}`,
-		`.grid{display:grid;}`,
-		`.grid-cols-3{grid-template-columns:repeat(3,minmax(0,1fr));}`,
+		`.gap-4{gap:calc(var(--spacing) * 4)}`,
+		`.grid{display:grid}`,
+		`.grid-cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}`,
 	})
 }
 
@@ -34,7 +34,7 @@ func TestCompilerChunks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertContains(t, string(css), []string{`.p-4{padding:calc(var(--spacing)*4);}`})
+	assertContains(t, string(css), []string{`.p-4{padding:calc(var(--spacing) * 4)}`})
 
 	if err := compiler.PutChunk(context.Background(), "index.html", []byte(`<div class="m-2"></div>`)); err != nil {
 		t.Fatal(err)
