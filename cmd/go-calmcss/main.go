@@ -3,6 +3,7 @@ package main
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../include -I${SRCDIR}/../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../zig-out/lib/libcalmcss_cgo.a
+#cgo linux LDFLAGS: -lm
 #include "calmcss.h"
 */
 import "C"
