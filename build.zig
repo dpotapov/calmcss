@@ -42,7 +42,7 @@ pub fn build(b: *std.Build) void {
     b.getInstallStep().dependOn(&install_static_lib.step);
 
     const cgo_archive = b.addSystemCommand(&.{
-        "sh",
+        "bash",
         "scripts/make-cgo-archive.sh",
         b.getInstallPath(.lib, "libcalmcss.a"),
         b.getInstallPath(.lib, "libcalmcss_cgo.a"),
