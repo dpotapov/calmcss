@@ -41,11 +41,13 @@ pub fn build(b: *std.Build) void {
     const install_static_lib = b.addInstallArtifact(static_lib, .{});
     b.getInstallStep().dependOn(&install_static_lib.step);
 
+    const static_lib_install_name = if (target.result.os.tag == .windows) "calmcss.lib" else "libcalmcss.a";
     const cgo_archive = b.addSystemCommand(&.{
         "bash",
         "scripts/make-cgo-archive.sh",
-        b.getInstallPath(.lib, "libcalmcss.a"),
+        b.getInstallPath(.lib, static_lib_install_name),
         b.getInstallPath(.lib, "libcalmcss_cgo.a"),
+        @tagName(target.result.os.tag),
     });
     cgo_archive.step.dependOn(&install_static_lib.step);
     b.getInstallStep().dependOn(&cgo_archive.step);

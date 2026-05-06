@@ -1,20 +1,13 @@
 package main
 
-/*
-#cgo CFLAGS: -I${SRCDIR}/../../include -I${SRCDIR}/../../zig-out/include
-#cgo LDFLAGS: ${SRCDIR}/../../zig-out/lib/libcalmcss_cgo.a
-#cgo linux LDFLAGS: -lm
-#include "calmcss.h"
-*/
-import "C"
-
 import (
 	"bytes"
 	"flag"
 	"fmt"
 	"io"
 	"os"
-	"unsafe"
+
+	"github.com/calmcss/calmcss/go/calmnative"
 )
 
 func main() {
@@ -57,20 +50,7 @@ func main() {
 }
 
 func compile(input []byte) ([]byte, error) {
-	var inPtr *C.uint8_t
-	if len(input) > 0 {
-		inPtr = (*C.uint8_t)(unsafe.Pointer(unsafe.SliceData(input)))
-	}
-	needed := C.calm_compile(inPtr, C.size_t(len(input)), nil, 0)
-	if needed == 0 {
-		return nil, nil
-	}
-	out := make([]byte, int(needed))
-	got := C.calm_compile(inPtr, C.size_t(len(input)), (*C.uint8_t)(unsafe.Pointer(unsafe.SliceData(out))), needed)
-	if got > needed {
-		return nil, fmt.Errorf("calm_compile result grew from %d to %d bytes", needed, got)
-	}
-	return out[:int(got)], nil
+	return calmnative.Compile(input)
 }
 
 func exitf(format string, args ...any) {

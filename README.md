@@ -7,6 +7,8 @@ minified CSS. The same core is exposed as:
 - `calmcss`, a Zig CLI
 - `libcalmcss.a`, a static C ABI library
 - `calmcss.wasm`, a freestanding `wasm32` module with no WASI dependency
+- `go/calmnative`, a Go library using CGO and the Zig static library
+- `go/calmwasm`, a Go library using the freestanding WASM module through wazero
 - `go-calmcss`, a Go CLI using CGO and the Zig static library
 - `wazero-calmcss`, a Go CLI using the freestanding WASM module through wazero
 - `web/index.html`, a browser editor that renders CSS on each edit
@@ -126,11 +128,74 @@ library:
 Each chunk represents one file. Reusing the same chunk name replaces its content,
 so runtimes can update a single file and re-render the final CSS.
 
-## Go Wrappers
+## Go Libraries
 
-Build the Zig artifacts first, then build the Go CLIs. `libcalmcss_cgo.a` is a
-Darwin-friendly archive rebuilt from the Zig static library for Apple's linker;
-on other platforms it is a copy of `libcalmcss.a`.
+CalmCSS exposes two importable Go packages with the same basic shape:
+
+- `github.com/calmcss/calmcss/go/calmnative` uses CGO and links the Zig static
+  library. Prebuilt static archives are bundled for Linux amd64/arm64, macOS
+  arm64, and Windows amd64/arm64, so users on those targets do not need to
+  install Zig. CGO must still be enabled and a C linker/compiler must be
+  available.
+- `github.com/calmcss/calmcss/go/calmwasm` does not use CGO. It runs
+  `calmcss.wasm` with wazero, and callers pass the WASM bytes explicitly.
+
+Native CGO package:
+
+```go
+package main
+
+import (
+	"os"
+
+	"github.com/calmcss/calmcss/go/calmnative"
+)
+
+func main() {
+	css, err := calmnative.Compile([]byte(`<div class="p-4 text-blue-600"></div>`))
+	if err != nil {
+		panic(err)
+	}
+	_ = os.WriteFile("calm.css", css, 0o644)
+}
+```
+
+WASM package:
+
+```go
+package main
+
+import (
+	"context"
+	"os"
+
+	"github.com/calmcss/calmcss/go/calmwasm"
+)
+
+func main() {
+	ctx := context.Background()
+	wasmBytes, err := os.ReadFile("calmcss.wasm")
+	if err != nil {
+		panic(err)
+	}
+
+	css, err := calmwasm.Compile(ctx, wasmBytes, []byte(`<div class="grid gap-4"></div>`))
+	if err != nil {
+		panic(err)
+	}
+	_ = os.WriteFile("calm.css", css, 0o644)
+}
+```
+
+Both packages also expose a reusable `Compiler` with `PutChunk`, `Render`,
+`Clear`, and `Close` for long-running processes.
+
+## Go CLIs
+
+`go-calmcss` uses the CGO package with bundled native archives, while
+`wazero-calmcss` uses the no-CGO WASM package. Build the Zig artifacts first
+when running the WASM CLI from this repository so `zig-out/wasm/calmcss.wasm`
+exists.
 
 ```sh
 zig build
@@ -143,6 +208,12 @@ Run them:
 ```sh
 go run ./cmd/go-calmcss examples/input.html
 go run ./cmd/wazero-calmcss -wasm zig-out/wasm/calmcss.wasm examples/input.html
+```
+
+Regenerate the bundled native archives after changing the Zig ABI library:
+
+```sh
+scripts/build-go-native-prebuilt.sh
 ```
 
 ## Browser Demo

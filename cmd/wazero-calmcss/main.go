@@ -8,7 +8,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/tetratelabs/wazero"
+	"github.com/calmcss/calmcss/go/calmwasm"
 )
 
 func main() {
@@ -57,95 +57,7 @@ func readInputs(paths []string) ([]byte, error) {
 }
 
 func compileWithWasm(ctx context.Context, wasmBytes []byte, input []byte) ([]byte, error) {
-	runtime := wazero.NewRuntime(ctx)
-	defer runtime.Close(ctx)
-
-	mod, err := runtime.Instantiate(ctx, wasmBytes)
-	if err != nil {
-		return nil, fmt.Errorf("instantiate calmcss wasm: %w", err)
-	}
-
-	create := mod.ExportedFunction("calm_create")
-	putChunk := mod.ExportedFunction("calm_put_chunk")
-	render := mod.ExportedFunction("calm_render")
-	resultPtr := mod.ExportedFunction("calm_result_ptr")
-	resultLen := mod.ExportedFunction("calm_result_len")
-	destroy := mod.ExportedFunction("calm_destroy")
-	alloc := mod.ExportedFunction("calm_alloc")
-	free := mod.ExportedFunction("calm_free")
-	memory := mod.Memory()
-	if create == nil || putChunk == nil || render == nil || resultPtr == nil || resultLen == nil || destroy == nil || alloc == nil || free == nil || memory == nil {
-		return nil, fmt.Errorf("wasm module does not expose the CalmCSS ABI")
-	}
-
-	ctxResult, err := create.Call(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("calm_create: %w", err)
-	}
-	compiler := ctxResult[0]
-	defer destroy.Call(ctx, compiler)
-
-	namePtr, err := writeWasmBytes(ctx, alloc, free, memory, []byte("stdin"))
-	if err != nil {
-		return nil, err
-	}
-	defer free.Call(ctx, uint64(namePtr), uint64(len("stdin")))
-	inputPtr, err := writeWasmBytes(ctx, alloc, free, memory, input)
-	if err != nil {
-		return nil, err
-	}
-	defer free.Call(ctx, uint64(inputPtr), uint64(len(input)))
-
-	if _, err := putChunk.Call(ctx, compiler, uint64(namePtr), uint64(len("stdin")), uint64(inputPtr), uint64(len(input))); err != nil {
-		return nil, fmt.Errorf("calm_put_chunk: %w", err)
-	}
-	sizeResult, err := render.Call(ctx, compiler)
-	if err != nil {
-		return nil, fmt.Errorf("calm_render: %w", err)
-	}
-	if sizeResult[0] == 0 {
-		return nil, nil
-	}
-	ptrResult, err := resultPtr.Call(ctx, compiler)
-	if err != nil {
-		return nil, fmt.Errorf("calm_result_ptr: %w", err)
-	}
-	lenResult, err := resultLen.Call(ctx, compiler)
-	if err != nil {
-		return nil, fmt.Errorf("calm_result_len: %w", err)
-	}
-	ptr := uint32(ptrResult[0])
-	n := uint32(lenResult[0])
-	data, ok := memory.Read(ptr, n)
-	if !ok {
-		return nil, fmt.Errorf("wasm result range is outside exported memory")
-	}
-	return append([]byte(nil), data...), nil
-}
-
-func writeWasmBytes(ctx context.Context, alloc, free wazeroapi, memory wazeroMemory, data []byte) (uint32, error) {
-	result, err := alloc.Call(ctx, uint64(len(data)))
-	if err != nil {
-		return 0, fmt.Errorf("calm_alloc: %w", err)
-	}
-	ptr := uint32(result[0])
-	if ptr == 0 && len(data) > 0 {
-		return 0, fmt.Errorf("calm_alloc returned null")
-	}
-	if !memory.Write(ptr, data) {
-		_, _ = free.Call(ctx, uint64(ptr), uint64(len(data)))
-		return 0, fmt.Errorf("wasm allocation range is outside exported memory")
-	}
-	return ptr, nil
-}
-
-type wazeroapi interface {
-	Call(context.Context, ...uint64) ([]uint64, error)
-}
-
-type wazeroMemory interface {
-	Write(uint32, []byte) bool
-	Read(uint32, uint32) ([]byte, bool)
+	return calmwasm.Compile(ctx, wasmBytes, input)
 }
 
 func exitf(format string, args ...any) {
