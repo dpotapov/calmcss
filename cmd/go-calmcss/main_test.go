@@ -12,7 +12,7 @@ func TestCompile(t *testing.T) {
 	}
 	output := string(css)
 	for _, expected := range []string{
-		`.p-4{padding:calc(var(--spacing)*4);}`,
+		`.p-4{padding:calc(var(--spacing) * 4)}`,
 		`.text-blue-600{color:var(--color-blue-600);}`,
 		`.hover\:bg-blue-50:hover{background-color:var(--color-blue-50);}`,
 	} {

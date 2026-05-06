@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "conformance": "node scripts/conformance.mjs",
-    "generate:core-snapshots": "node scripts/generate-core-snapshots.mjs",
-    "generate:plugin-snapshots": "node scripts/generate-plugin-snapshots.mjs",
+    "generate:core-parity-data": "node scripts/generate-core-parity-data.mjs",
+    "generate:default-color-fallbacks": "node scripts/generate-default-color-fallbacks.mjs",
+    "generate:plugin-parity-data": "node scripts/generate-plugin-parity-data.mjs",
     "parity": "node scripts/parity.mjs",
     "parity:sets": "node scripts/parity-sets.mjs",
     "parity:sets:official": "node scripts/official-set-parity.mjs",

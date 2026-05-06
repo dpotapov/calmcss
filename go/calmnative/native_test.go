@@ -13,7 +13,7 @@ func TestCompile(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertContains(t, string(css), []string{
-		`.p-4{padding:calc(var(--spacing)*4);}`,
+		`.p-4{padding:calc(var(--spacing) * 4)}`,
 		`.text-blue-600{color:var(--color-blue-600);}`,
 		`.hover\:bg-blue-50:hover{background-color:var(--color-blue-50);}`,
 	})
@@ -33,7 +33,7 @@ func TestCompilerChunks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertContains(t, string(css), []string{`.p-4{padding:calc(var(--spacing)*4);}`})
+	assertContains(t, string(css), []string{`.p-4{padding:calc(var(--spacing) * 4)}`})
 
 	if err := compiler.PutChunk("index.html", []byte(`<div class="m-2"></div>`)); err != nil {
 		t.Fatal(err)

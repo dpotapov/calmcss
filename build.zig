@@ -3,15 +3,12 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-    const compat_snapshots = b.option(bool, "compat-snapshots", "Include generated Tailwind compatibility snapshots in CLI/test builds") orelse true;
-    const production_snapshots = b.option(bool, "production-snapshots", "Include generated Tailwind compatibility snapshots in installed static library and WASM artifacts") orelse false;
 
     const lib_mod = b.addModule("calmcss", .{
         .root_source_file = b.path("src/lib.zig"),
         .target = target,
         .optimize = optimize,
     });
-    addCalmOptions(b, lib_mod, compat_snapshots);
 
     const exe = b.addExecutable(.{
         .name = "calmcss",
@@ -30,7 +27,6 @@ pub fn build(b: *std.Build) void {
         .optimize = .ReleaseSmall,
         .strip = true,
     });
-    addCalmOptions(b, static_lib_mod, production_snapshots);
 
     const static_lib = b.addLibrary(.{
         .name = "calmcss",
@@ -62,7 +58,6 @@ pub fn build(b: *std.Build) void {
         .optimize = .ReleaseSmall,
         .strip = true,
     });
-    addCalmOptions(b, wasm_mod, production_snapshots);
     const wasm = b.addExecutable(.{
         .name = "calmcss",
         .root_module = wasm_mod,
@@ -86,22 +81,15 @@ pub fn build(b: *std.Build) void {
     const lib_tests = b.addTest(.{ .root_module = lib_mod });
     const run_lib_tests = b.addRunArtifact(lib_tests);
 
-    const production_test_mod = b.createModule(.{
+    const release_test_mod = b.createModule(.{
         .root_source_file = b.path("src/lib.zig"),
         .target = target,
         .optimize = .ReleaseSmall,
     });
-    addCalmOptions(b, production_test_mod, false);
-    const production_tests = b.addTest(.{ .root_module = production_test_mod });
-    const run_production_tests = b.addRunArtifact(production_tests);
+    const release_tests = b.addTest(.{ .root_module = release_test_mod });
+    const run_release_tests = b.addRunArtifact(release_tests);
 
     const test_step = b.step("test", "Run Zig tests");
     test_step.dependOn(&run_lib_tests.step);
-    test_step.dependOn(&run_production_tests.step);
-}
-
-fn addCalmOptions(b: *std.Build, module: *std.Build.Module, compat_snapshots: bool) void {
-    const options = b.addOptions();
-    options.addOption(bool, "compat_snapshots", compat_snapshots);
-    module.addOptions("calmcss_options", options);
+    test_step.dependOn(&run_release_tests.step);
 }
