@@ -11,6 +11,7 @@
         "include",
         "scripts",
         "cmd",
+        "go",
         "web",
         "examples",
         "test",

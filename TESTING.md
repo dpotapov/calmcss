@@ -1,7 +1,7 @@
 # Testing
 
 CalmCSS uses focused unit tests, JSON conformance cases, generated Tailwind
-parity suites, render parity checks, and Go wrapper tests.
+parity suites, render parity checks, and Go library and wrapper tests.
 
 ## Quick Check
 
@@ -92,6 +92,11 @@ utilities, selector-list wrapping for authored selector variants, and
 `npm run parity:render` renders checked HTML snippets in headless Chrome with
 official Tailwind CSS and CalmCSS, then compares selected computed styles across
 desktop and mobile widths.
+
+The Go tests cover the CGO native package, the no-CGO WASM package, and the Go
+CLIs that consume those packages. The native package links bundled prebuilt
+archives. Build the Zig artifacts before running `go test ./...` so the WASM
+tests can read `calmcss.wasm`.
 
 `npm run parity:web-demo` runs the same render checks through the actual
 `web/index.html` WASM demo and its preview iframe, so browser-demo regressions
