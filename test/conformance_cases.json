@@ -1,0 +1,67 @@
+[
+  {
+    "name": "layout spacing color variant",
+    "html": "<div class=\"flex items-center gap-4 p-4 text-sm font-semibold text-blue-600 hover:bg-blue-50\"></div>",
+    "contains": [
+      ".flex{display:flex;}",
+      ".gap-4{gap:calc(var(--spacing)*4);}",
+      "@media (hover:hover){.hover\\:bg-blue-50:hover{background-color:var(--color-blue-50);}}",
+      ".items-center{align-items:center;}",
+      ".p-4{padding:calc(var(--spacing)*4);}",
+      ".text-blue-600{color:var(--color-blue-600);}",
+      ".text-sm{font-size:var(--text-sm);line-height:var(--tw-leading,var(--text-sm--line-height));}"
+    ]
+  },
+  {
+    "name": "responsive arbitrary sizing",
+    "html": "<main class=\"mx-auto w-full max-w-[72rem] px-6 md:grid md:grid-cols-3\"></main>",
+    "contains": [
+      ".max-w-\\[72rem\\]{max-width:72rem;}",
+      ".mx-auto{margin-inline:auto;}",
+      ".px-6{padding-inline:calc(var(--spacing)*6);}",
+      ".w-full{width:100%;}",
+      "@media (min-width:48rem){.md\\:grid{display:grid;}.md\\:grid-cols-3{grid-template-columns:repeat(3,minmax(0,1fr));}}"
+    ]
+  },
+  {
+    "name": "official plugin class strategy",
+    "html": "<article class=\"prose prose-invert\"><input class=\"form-input\"><input class=\"form-checkbox\"></article>",
+    "contains": [
+      ".form-checkbox{appearance:none;",
+      ".form-input{appearance:none;",
+      ".prose :where(h1):not(:where([class~=not-prose],[class~=not-prose] *)){color:var(--tw-prose-headings);",
+      ".prose-invert{--tw-prose-body:var(--tw-prose-invert-body);"
+    ]
+  },
+  {
+    "name": "chunk update expectation",
+    "html": "<section class=\"rounded-xl border border-slate-200 bg-white p-8 shadow-lg\"></section>",
+    "contains": [
+      ".bg-white{background-color:var(--color-white);}",
+      ".border{border-style:var(--tw-border-style);border-width:1px;}",
+      ".border-slate-200{border-color:var(--color-slate-200);}",
+      ".p-8{padding:calc(var(--spacing)*8);}",
+      ".rounded-xl{border-radius:var(--radius-xl);}",
+      ".shadow-lg{--tw-shadow:0 10px 15px -3px var(--tw-shadow-color,#0000001a),0 4px 6px -4px var(--tw-shadow-color,#0000001a);box-shadow:var(--tw-inset-shadow),var(--tw-inset-ring-shadow),var(--tw-ring-offset-shadow),var(--tw-ring-shadow),var(--tw-shadow);}"
+    ]
+  },
+  {
+    "name": "internet card snippet utilities",
+    "html": "<div class=\"p-10\"><h1 class=\"text-5xl\">TailwindCSS</h1><p class=text-sm>Welcome</p><div class=\"border border-l-8 border-blue-800 shadow rounded-lg mt-8 mb-8\"><h5 class=\"text-3xl font-bold m-5\">Heading</h5><p class=\"text-gray-700 text-sm ml-5 mr-5 mb-8\">Content</p><div class=\"bg-gray-100 pt-5 pb-5 border\"><p class=\"text-gray-700 text-bold text-sm ml-5 mr-5\">Footer</p></div></div><p class=\"underline sm:no-underline md:line-through lg:underline xl:no-underline\">Text</p><div class=\"text-right\"><button class=\"bg-red-500 rounded-lg py-2 px-5 shadow-lg text-green-100 text-sm hover:bg-red-600\">Cancel</button><button class=\"bg-blue-800 rounded-lg py-2 px-5 shadow-lg text-green-100 text-sm hover:bg-blue-900\">Submit</button><button class=\"py-3 px-8 bg-red-900 rounded shadow text-white\">My Button</button></div></div>",
+    "contains": [
+      ".border-l-8{border-left-style:var(--tw-border-style);border-left-width:8px;}",
+      ".text-sm{font-size:var(--text-sm);line-height:var(--tw-leading,var(--text-sm--line-height));}",
+      ".bg-gray-100{background-color:var(--color-gray-100);}",
+      ".hover\\:bg-blue-900:hover{background-color:var(--color-blue-900);}",
+      ".text-green-100{color:var(--color-green-100);}",
+      "@media (min-width:48rem){.md\\:line-through{text-decoration-line:line-through;}}"
+    ]
+  },
+  {
+    "name": "unquoted class attribute",
+    "html": "<p class=text-xs>unquoted</p>",
+    "contains": [
+      ".text-xs{font-size:var(--text-xs);line-height:var(--tw-leading,var(--text-xs--line-height));}"
+    ]
+  }
+]

@@ -1,0 +1,28 @@
+{
+  "name": "calmcss",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "conformance": "node scripts/conformance.mjs",
+    "generate:core-snapshots": "node scripts/generate-core-snapshots.mjs",
+    "generate:plugin-snapshots": "node scripts/generate-plugin-snapshots.mjs",
+    "parity": "node scripts/parity.mjs",
+    "parity:sets": "node scripts/parity-sets.mjs",
+    "parity:sets:official": "node scripts/official-set-parity.mjs",
+    "parity:theme": "node scripts/theme-parity.mjs",
+    "parity:utility": "node scripts/utility-parity.mjs",
+    "parity:variant": "node scripts/variant-parity.mjs",
+    "parity:official": "CALMCSS_PARITY_CANDIDATES=test/parity_candidates.official.json node scripts/parity.mjs",
+    "parity:plugins": "node scripts/plugin-parity.mjs",
+    "parity:render": "node scripts/render-parity.mjs",
+    "parity:web-demo": "node scripts/web-demo-parity.mjs",
+    "parity:official-css-context": "node scripts/official-css-context-parity.mjs"
+  },
+  "devDependencies": {
+    "@tailwindcss/forms": "^0.5.11",
+    "@tailwindcss/node": "4.2.4",
+    "@tailwindcss/typography": "^0.5.19",
+    "tailwindcss": "4.2.4"
+  }
+}

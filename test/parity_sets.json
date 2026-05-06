@@ -1,0 +1,225 @@
+[
+  {
+    "name": "official utility property order",
+    "candidates": ["py-3", "p-1", "px-3"]
+  },
+  {
+    "name": "official variant sort order",
+    "candidates": ["px-3", "focus:hover:p-3", "hover:p-1", "py-3"]
+  },
+  {
+    "name": "responsive text decoration cascade",
+    "candidates": [
+      "underline",
+      "sm:no-underline",
+      "md:line-through",
+      "lg:underline",
+      "xl:no-underline"
+    ]
+  },
+  {
+    "name": "responsive display cascade",
+    "candidates": ["hidden", "sm:block", "md:flex", "lg:grid", "xl:hidden"]
+  },
+  {
+    "name": "overflow and text overflow cascade",
+    "candidates": ["text-clip", "truncate", "overflow-scroll"]
+  },
+  {
+    "name": "pointer events before display and padding",
+    "candidates": ["pointer-events-none", "flex", "p-1", "px-1", "pl-1"]
+  },
+  {
+    "name": "reject bare default palette color names",
+    "candidates": ["accent-red", "text-lg"]
+  },
+  {
+    "name": "logical spacing and scroll spacing order",
+    "candidates": [
+      "scroll-ms-1",
+      "scroll-me-2",
+      "scroll-mx-3",
+      "scroll-ps-1",
+      "scroll-pe-2",
+      "scroll-px-3",
+      "ms-1",
+      "me-2",
+      "mx-3",
+      "ps-1",
+      "pe-2",
+      "px-3"
+    ]
+  },
+  {
+    "name": "touch action variable order",
+    "candidates": [
+      "touch-pan-x",
+      "touch-pan-left",
+      "touch-pan-right",
+      "touch-pan-y",
+      "touch-pan-up",
+      "touch-pan-down"
+    ]
+  },
+  {
+    "name": "overflow axis keyword order",
+    "candidates": [
+      "overflow-x-auto",
+      "overflow-x-hidden",
+      "overflow-x-clip",
+      "overflow-x-visible",
+      "overflow-x-scroll"
+    ]
+  },
+  {
+    "name": "word break order",
+    "candidates": ["break-normal", "break-words", "break-all", "break-keep"]
+  },
+  {
+    "name": "object fit before object position",
+    "candidates": [
+      "object-contain",
+      "object-cover",
+      "object-fill",
+      "object-none",
+      "object-scale-down",
+      "object-top",
+      "object-bottom",
+      "object-center"
+    ]
+  },
+  {
+    "name": "container before width utilities",
+    "candidates": ["w-1/2", "container"]
+  },
+  {
+    "name": "contain utility property buckets",
+    "candidates": [
+      "contain-none",
+      "contain-content",
+      "contain-strict",
+      "contain-size",
+      "contain-inline-size",
+      "contain-layout",
+      "contain-paint",
+      "contain-style",
+      "contain-[unset]"
+    ]
+  },
+  {
+    "name": "font variant numeric order",
+    "candidates": [
+      "normal-nums",
+      "ordinal",
+      "slashed-zero",
+      "lining-nums",
+      "oldstyle-nums",
+      "proportional-nums",
+      "tabular-nums",
+      "diagonal-fractions",
+      "stacked-fractions"
+    ]
+  },
+  {
+    "name": "container query utility ordering",
+    "candidates": [
+      "@container",
+      "@container-normal",
+      "@container/sidebar",
+      "@container-normal/sidebar",
+      "@container-size",
+      "@container-size/sidebar"
+    ]
+  },
+  {
+    "name": "mask position order without duplicate prefix optimization",
+    "candidates": [
+      "mask-t-from-0",
+      "mask-t-from-1.5",
+      "mask-t-from-2",
+      "mask-t-from-0%",
+      "mask-t-from-2%"
+    ]
+  },
+  {
+    "name": "prefixed decoration color output",
+    "candidates": ["decoration-red-500", "decoration-red-500/50"]
+  },
+  {
+    "name": "transition property buckets",
+    "candidates": [
+      "transition",
+      "transition-none",
+      "transition-all",
+      "transition-transform",
+      "transition-shadow",
+      "transition-colors",
+      "transition-opacity"
+    ]
+  },
+  {
+    "name": "outline style color buckets",
+    "candidates": [
+      "outline",
+      "outline-hidden",
+      "outline-none",
+      "outline-solid",
+      "outline-dashed",
+      "outline-dotted",
+      "outline-double",
+      "outline-red-500",
+      "outline-red-500/50"
+    ]
+  },
+  {
+    "name": "ring color before inset",
+    "candidates": [
+      "ring-inset",
+      "ring-red-500",
+      "ring-red-500/50",
+      "ring-red-500/2.25",
+      "ring-red-500/2.5",
+      "ring-red-500/2.75"
+    ]
+  },
+  {
+    "name": "group and peer variants before simple variant",
+    "candidates": ["first:flex", "group-first:flex", "peer-first:flex"]
+  },
+  {
+    "name": "functional min breakpoint order",
+    "candidates": ["min-lg:flex", "min-sm:flex", "min-md:flex"]
+  },
+  {
+    "name": "open group peer and not variant order",
+    "candidates": ["open:flex", "group-open:flex", "peer-open:flex", "not-open:flex"]
+  },
+  {
+    "name": "group hover before group focus",
+    "candidates": ["group-focus:flex", "group-hover:flex"]
+  },
+  {
+    "name": "stacked min max breakpoint order",
+    "candidates": [
+      "min-sm:max-lg:flex",
+      "min-sm:max-xl:flex",
+      "min-md:max-lg:flex",
+      "min-xs:max-sm:flex"
+    ]
+  },
+  {
+    "name": "static and stacked breakpoint order",
+    "candidates": ["sm:flex", "min-sm:max-lg:flex", "md:flex", "min-md:max-lg:flex"]
+  },
+  {
+    "name": "reject invalid breakpoint-like variants",
+    "candidates": [
+      "max-lg-sm-potato:flex",
+      "min-lg-sm-potato:flex",
+      "lg-sm-potato:flex",
+      "max-lg:flex",
+      "max-sm:flex",
+      "min-lg:flex"
+    ]
+  }
+]

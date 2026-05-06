@@ -1,0 +1,5 @@
+{
+  "content": ["examples/**/*.html"],
+  "safelist": ["prose", "form-input", "form-checkbox"],
+  "plugins": ["forms", "typography"]
+}

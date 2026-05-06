@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CalmCSS WASM Demo</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #f7f7f4;
+        color: #1f2933;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+      }
+
+      main {
+        display: grid;
+        grid-template-rows: auto 1fr;
+        min-height: 100vh;
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 14px 18px;
+        border-bottom: 1px solid #d8d8d0;
+        background: #fffffb;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 17px;
+        line-height: 1.2;
+        letter-spacing: 0;
+      }
+
+      .status {
+        min-width: 160px;
+        text-align: right;
+        font-size: 13px;
+        color: #53606d;
+      }
+
+      .workspace {
+        display: grid;
+        grid-template-columns: minmax(260px, 0.9fr) minmax(300px, 1.1fr) minmax(260px, 0.9fr);
+        min-height: 0;
+      }
+
+      section {
+        display: grid;
+        grid-template-rows: 38px 1fr;
+        min-width: 0;
+        min-height: 0;
+        border-right: 1px solid #d8d8d0;
+      }
+
+      section:last-child {
+        border-right: 0;
+      }
+
+      .label {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 12px;
+        border-bottom: 1px solid #d8d8d0;
+        background: #efefea;
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+        color: #46515c;
+      }
+
+      textarea,
+      pre,
+      iframe {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        border: 0;
+        resize: none;
+        outline: none;
+        min-width: 0;
+        min-height: 0;
+      }
+
+      textarea,
+      pre {
+        padding: 14px;
+        font:
+          13px/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+          monospace;
+        background: #fffffb;
+        color: #17202a;
+      }
+
+      pre {
+        overflow: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      iframe {
+        background: white;
+      }
+
+      button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        height: 30px;
+        border: 1px solid #aeb7bd;
+        border-radius: 6px;
+        background: #fff;
+        color: #27333f;
+        cursor: pointer;
+      }
+
+      button:hover {
+        border-color: #64717d;
+      }
+
+      @media (max-width: 920px) {
+        .workspace {
+          grid-template-columns: 1fr;
+          grid-template-rows: 38vh 38vh 38vh;
+        }
+
+        section {
+          border-right: 0;
+          border-bottom: 1px solid #d8d8d0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>CalmCSS</h1>
+        <div class="status" id="status">loading wasm</div>
+      </header>
+      <div class="workspace">
+        <section>
+          <div class="label">
+            HTML
+            <button id="reset" title="Reset example" aria-label="Reset example">↺</button>
+          </div>
+          <textarea id="html" spellcheck="false"></textarea>
+        </section>
+        <section>
+          <div class="label">Preview</div>
+          <iframe id="preview" title="CalmCSS preview"></iframe>
+        </section>
+        <section>
+          <div class="label">CSS</div>
+          <pre id="css"></pre>
+        </section>
+      </div>
+    </main>
+
+    <script type="module">
+      const example = `<article class="prose mx-auto p-6">
+  <h1 class="text-3xl font-bold tracking-tight text-slate-900">Runtime CSS</h1>
+  <p class="mt-4 text-slate-700">
+    CalmCSS scans each named chunk, generates minified utility CSS, and re-renders when content changes.
+  </p>
+  <button class="mt-6 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+    Compile
+  </button>
+</article>`;
+
+      const htmlInput = document.querySelector("#html");
+      const cssOutput = document.querySelector("#css");
+      const preview = document.querySelector("#preview");
+      const status = document.querySelector("#status");
+      const reset = document.querySelector("#reset");
+
+      htmlInput.value = example;
+
+      let wasm;
+      let compiler;
+      let themeCss = "";
+      let preflightCss = "";
+      let timer;
+
+      async function load() {
+        const [themeResponse, preflightResponse, wasmResponse] = await Promise.all([
+          fetch("theme.css"),
+          fetch("preflight.css"),
+          fetch("../zig-out/wasm/calmcss.wasm"),
+        ]);
+        if (!themeResponse.ok) throw new Error(`theme.css failed: ${themeResponse.status}`);
+        if (!preflightResponse.ok) throw new Error(`preflight.css failed: ${preflightResponse.status}`);
+        if (!wasmResponse.ok) throw new Error(`calmcss.wasm failed: ${wasmResponse.status}`);
+        themeCss = await themeResponse.text();
+        preflightCss = await preflightResponse.text();
+        const bytes = await wasmResponse.arrayBuffer();
+        const instance = await WebAssembly.instantiate(bytes, {});
+        wasm = instance.instance.exports;
+        compiler = wasm.calm_create();
+        status.textContent = "ready";
+        render();
+      }
+
+      function writeBytes(bytes) {
+        const ptr = wasm.calm_alloc(bytes.length);
+        new Uint8Array(wasm.memory.buffer, ptr, bytes.length).set(bytes);
+        return ptr;
+      }
+
+      function putChunk(name, content) {
+        const enc = new TextEncoder();
+        const nameBytes = enc.encode(name);
+        const contentBytes = enc.encode(content);
+        const namePtr = writeBytes(nameBytes);
+        const contentPtr = writeBytes(contentBytes);
+        try {
+          const rc = wasm.calm_put_chunk(
+            compiler,
+            namePtr,
+            nameBytes.length,
+            contentPtr,
+            contentBytes.length,
+          );
+          if (rc !== 0) throw new Error(`calm_put_chunk failed: ${rc}`);
+        } finally {
+          wasm.calm_free(namePtr, nameBytes.length);
+          wasm.calm_free(contentPtr, contentBytes.length);
+        }
+      }
+
+      function render() {
+        if (!wasm) return;
+        putChunk("editor.html", htmlInput.value);
+        const len = wasm.calm_render(compiler);
+        const ptr = wasm.calm_result_ptr(compiler);
+        const css = new TextDecoder().decode(new Uint8Array(wasm.memory.buffer, ptr, len));
+        cssOutput.textContent = css;
+        updatePreview(css);
+        status.textContent = `${len.toLocaleString()} bytes`;
+      }
+
+      function updatePreview(css) {
+        const doc = preview.contentDocument;
+        doc.open();
+        doc.write(
+          '<!doctype html><html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /></head><body></body></html>',
+        );
+        doc.close();
+
+        const style = doc.createElement("style");
+        style.textContent = `${themeCss}\n${preflightCss}\n${css}`;
+        doc.head.appendChild(style);
+        doc.body.innerHTML = htmlInput.value;
+      }
+
+      htmlInput.addEventListener("input", () => {
+        clearTimeout(timer);
+        timer = setTimeout(render, 120);
+      });
+
+      reset.addEventListener("click", () => {
+        htmlInput.value = example;
+        render();
+      });
+
+      load().catch((error) => {
+        status.textContent = "demo unavailable";
+        cssOutput.textContent = String(error);
+      });
+    </script>
+  </body>
+</html>

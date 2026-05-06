@@ -1,0 +1,25 @@
+.{
+    .name = .calmcss,
+    .version = "0.1.0",
+    .fingerprint = 0xf69b9fa137ab146a, // Changing this has security and trust implications.
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{},
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "include",
+        "scripts",
+        "cmd",
+        "web",
+        "examples",
+        "test",
+        "bench",
+        "package.json",
+        "package-lock.json",
+        "go.mod",
+        "go.sum",
+        "LICENSE",
+        "README.md",
+    },
+}

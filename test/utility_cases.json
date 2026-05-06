@@ -1,0 +1,628 @@
+[
+  {
+    "name": "static utility with variants",
+    "css": "@theme reference { --breakpoint-lg:1024px; } @utility text-trim { text-box-trim: both; text-box-edge: cap alphabetic; } @tailwind utilities;",
+    "candidates": ["text-trim", "hover:text-trim", "lg:text-trim"]
+  },
+  {
+    "name": "prefixed utilities ignore unprefixed candidates",
+    "css": "@theme reference prefix(tw); @utility custom { color: red; } @tailwind utilities;",
+    "candidates": ["tw:custom", "tw:underline", "tw:hover:line-through", "tw:group-hover:flex", "tw:peer-hover:flex", "custom", "underline", "hover:line-through", "group-hover:flex", "peer-hover:flex"]
+  },
+  {
+    "name": "static utility important modifiers",
+    "css": "@utility foo { color: red; } @tailwind utilities;",
+    "candidates": ["foo", "foo!", "!foo", "hover:foo!", "hover:!foo"]
+  },
+  {
+    "name": "merged static utility definitions",
+    "css": "@utility really-round { --custom-prop: hi; border-radius: 50rem; } @utility really-round { border-radius: 30rem; } @tailwind utilities;",
+    "candidates": ["really-round"]
+  },
+  {
+    "name": "static utility special characters",
+    "css": "@utility push-1/2 { right: 50%; } @utility push-50% { right: 50%; } @tailwind utilities;",
+    "candidates": ["push-1/2", "push-50%"]
+  },
+  {
+    "name": "single word static utility after use",
+    "css": "@utility foo { color: red; } @tailwind utilities;",
+    "htmlBeforeCss": true,
+    "candidates": ["foo"]
+  },
+  {
+    "name": "static utility sorted by first declaration",
+    "css": "@utility push-left { right: 100%; } @tailwind utilities;",
+    "candidates": ["top-[100px]", "push-left", "right-[100px]", "bottom-[100px]"]
+  },
+  {
+    "name": "static utility top level apply",
+    "css": "@utility foo { @apply flex flex-col underline; } @tailwind utilities;",
+    "candidates": ["foo", "hover:foo"]
+  },
+  {
+    "name": "static utility apply mixed with declarations",
+    "css": "@utility foo { color: red; @apply underline flex; background: blue; } @tailwind utilities;",
+    "candidates": ["foo"]
+  },
+  {
+    "name": "static utility nested apply",
+    "css": "@utility bar { @apply z-10; .baz { @apply z-20; } &:hover { @apply z-30; } } @tailwind utilities;",
+    "candidates": ["bar"]
+  },
+  {
+    "name": "authored css top level apply",
+    "css": ".foo { @apply underline flex; } @tailwind utilities;",
+    "candidates": []
+  },
+  {
+    "name": "authored css apply mixed with declarations",
+    "css": ".foo { color: red; @apply underline flex; background: blue; } @tailwind utilities;",
+    "candidates": []
+  },
+  {
+    "name": "authored css apply important modifiers",
+    "css": ".foo { @apply underline! z-10!; } @tailwind utilities;",
+    "candidates": []
+  },
+  {
+    "name": "authored css apply theme utility",
+    "css": "@theme { --color-brand:#123456; } .foo { @apply text-brand; } @tailwind utilities;",
+    "candidates": []
+  },
+  {
+    "name": "authored css apply typed property utility",
+    "css": ".c1 { @apply leading-none; } .c2 { @apply leading-none!; } .c3 { @apply leading-none; }",
+    "candidates": []
+  },
+  {
+    "name": "authored css apply complex theme and typed utilities",
+    "css": "@theme { --color-red-200:#fecaca; --color-red-500:#ef4444; --color-blue-500:#3b82f6; --color-green-200:#bbf7d0; --color-green-500:#22c55e; --breakpoint-md:768px; --animate-spin: spin 1s linear infinite; @keyframes spin { to { transform: rotate(360deg); } } } @tailwind utilities; .foo { @apply underline bg-red-500 hover:bg-blue-500 md:bg-green-500 animate-spin translate-x-full; &:hover:focus { @apply bg-red-200 md:bg-green-200; } }",
+    "candidates": []
+  },
+  {
+    "name": "authored css spacing function",
+    "css": "@theme { --spacing:0.25rem; } .foo { margin: --spacing(4); }",
+    "candidates": []
+  },
+  {
+    "name": "authored css inline spacing function",
+    "css": "@theme inline { --spacing:0.25rem; } .foo { margin: --spacing(4); }",
+    "candidates": []
+  },
+  {
+    "name": "authored css alpha function",
+    "css": ".foo { margin: --alpha(red / 50%); }",
+    "candidates": []
+  },
+  {
+    "name": "authored css alpha dynamic function",
+    "css": ".foo { color: --alpha(red / var(--opacity)); }",
+    "candidates": []
+  },
+  {
+    "name": "authored css theme function variable",
+    "css": "@theme { --color-red-500:#f00; } .red { color: --theme(--color-red-500); }",
+    "candidates": []
+  },
+  {
+    "name": "authored css theme function inline variable",
+    "css": "@theme { --color-red-500:#f00; } .red { color: --theme(--color-red-500 inline); }",
+    "candidates": []
+  },
+  {
+    "name": "authored css theme function reference fallback",
+    "css": "@theme reference { --color-red-500:#f00; } .red { color: --theme(--color-red-500, blue); }",
+    "candidates": []
+  },
+  {
+    "name": "authored css theme function color alpha",
+    "css": "@theme { --color-red-500:#f00; } .red { color: --theme(--color-red-500/0.5); }",
+    "candidates": []
+  },
+  {
+    "name": "authored css theme function color alpha inline",
+    "css": "@theme { --color-red-500:#f00; } .red { color: --theme(--color-red-500/50 inline); }",
+    "candidates": []
+  },
+  {
+    "name": "authored css theme function initial reference fallback",
+    "css": "@theme prefix(tw) { --default-font-family: --theme(--font-family, initial); } .red { font-family: --theme(--default-font-family, Potato Sans, sans-serif); }",
+    "candidates": []
+  },
+  {
+    "name": "authored css theme function initial reference fallback reference mode",
+    "css": "@theme reference prefix(tw) { --default-font-family: --theme(--font-family, initial); } .red { font-family: --theme(--default-font-family, Potato Sans, sans-serif); }",
+    "candidates": []
+  },
+  {
+    "name": "authored css legacy theme color function",
+    "css": "@theme { --color-red-500:#f00; } .red { color: theme(colors[red][500]); }",
+    "candidates": []
+  },
+  {
+    "name": "authored css legacy theme color alpha percent function",
+    "css": "@theme { --color-red-500:#f00; } .red { color: theme(colors.red.500/75%); }",
+    "candidates": []
+  },
+  {
+    "name": "authored css legacy theme color alpha var function",
+    "css": "@theme { --color-red-500:#f00; } .red { color: theme(colors.red.500/var(--opacity)); }",
+    "candidates": []
+  },
+  {
+    "name": "authored css legacy theme spacing function",
+    "css": "@theme { --spacing-2_5:0.625rem; } .space { margin-left: calc(100vh - theme(spacing[2.5])); }",
+    "candidates": []
+  },
+  {
+    "name": "authored css legacy theme radius and blur functions",
+    "css": "@theme { --radius-lg:0.5rem; --blur:8px; } .radius { border-radius: theme(borderRadius.lg); } .blur { filter: blur(theme(blur.DEFAULT)); }",
+    "candidates": []
+  },
+  {
+    "name": "authored css legacy theme text metadata function",
+    "css": "@theme { --text-xs:1337.75rem; --text-xs--line-height:1337rem; } .text { font-size: theme(fontSize.xs); line-height: theme(fontSize.xs[1].lineHeight); }",
+    "candidates": []
+  },
+  {
+    "name": "authored css legacy theme font family function",
+    "css": "@theme { --font-sans:potato; } .fam { font-family: theme(fontFamily.sans); }",
+    "candidates": []
+  },
+  {
+    "name": "authored css legacy theme nested fallback",
+    "css": "@theme { --color-red-500:#f00; } .foo { color: theme(colors.unknown, theme(colors.red.500)); }",
+    "candidates": []
+  },
+  {
+    "name": "authored css legacy theme recursive color value",
+    "css": "@theme { --color-red-500:#f00; --color-foo: theme(colors.red.500); } .foo { color: theme(colors.foo); }",
+    "candidates": []
+  },
+  {
+    "name": "authored css legacy theme recursive color alpha value",
+    "css": "@theme { --color-red-500:#f00; --color-foo: theme(colors.red.500 / 50%); } .foo { color: theme(colors.foo / 50%); }",
+    "candidates": []
+  },
+  {
+    "name": "authored css legacy theme media prelude",
+    "css": "@theme { --breakpoint-md:48rem; --breakpoint-lg:64rem; } @media (min-width:theme(breakpoint.md)) and (max-width: theme(--breakpoint-lg)) { .red { color: red; } }",
+    "candidates": []
+  },
+  {
+    "name": "authored css custom media theme function",
+    "css": "@theme { --breakpoint-md:48rem; } @custom-media --my-media (min-width: theme(breakpoint.md)); @media (--my-media) { .red { color: red; } }",
+    "candidates": []
+  },
+  {
+    "name": "authored css theme function at-rule inline",
+    "css": "@theme { --breakpoint-md:48rem; --breakpoint-lg:64rem; } @custom-media --md (width >= --theme(--breakpoint-md)); @media (--md) { .blue { color: blue; } } @media (width >= --theme(--breakpoint-lg)) { .red { color: red; } }",
+    "candidates": []
+  },
+  {
+    "name": "authored css theme function supports prelude",
+    "css": "@theme { --font-size-xs:0.75rem; } @supports (text-stroke: theme(--font-size-xs)) { .red { color: red; } }",
+    "candidates": []
+  },
+  {
+    "name": "authored css legacy theme nested media prelude",
+    "css": ".wrap { @media (min-width: theme(breakpoint.md)) { color: red; } } @theme { --breakpoint-md:48rem; }",
+    "candidates": []
+  },
+  {
+    "name": "authored css apply variant utility",
+    "css": ".foo { @apply hover:underline; } @tailwind utilities;",
+    "candidates": []
+  },
+  {
+    "name": "authored css apply utility order",
+    "css": ".foo { @apply z-20 z-10; } @tailwind utilities;",
+    "candidates": []
+  },
+  {
+    "name": "authored css apply content utility order",
+    "css": ".foo { @apply content-[\"a\"] content-[\"b\"]; } @tailwind utilities;",
+    "candidates": []
+  },
+  {
+    "name": "authored css nested apply blocks",
+    "css": ".foo { color: red; @apply underline; div { @apply flex; } &:hover { @apply block; } @media (min-width: 10px) { @apply grid; } } @tailwind utilities;",
+    "candidates": []
+  },
+  {
+    "name": "authored css nested selector lists",
+    "css": ".foo, .bar { .baz, &:hover { @apply flex; } } @tailwind utilities;",
+    "candidates": []
+  },
+  {
+    "name": "tailwind utilities directive order",
+    "css": ".before { @apply underline; } @tailwind utilities; .after { @apply block; }",
+    "candidates": ["flex"]
+  },
+  {
+    "name": "tailwind utilities import entrypoint",
+    "css": ".before { @apply underline; } @import \"tailwindcss/utilities\"; .after { @apply block; }",
+    "candidates": ["flex"]
+  },
+  {
+    "name": "tailwind utilities import important",
+    "css": "@import \"tailwindcss/utilities\" important; .foo { @apply flex; }",
+    "candidates": ["flex", "hover:block"]
+  },
+  {
+    "name": "tailwind utilities nested selector wrapper",
+    "css": "#app { @tailwind utilities; }",
+    "candidates": ["underline", "hover:line-through"]
+  },
+  {
+    "name": "tailwind utilities nested selector important wrapper",
+    "css": "@media important { #app { @tailwind utilities; } }",
+    "candidates": ["underline", "hover:line-through"]
+  },
+  {
+    "name": "tailwind preflight import entrypoint",
+    "css": "@import \"tailwindcss/preflight\";",
+    "candidates": []
+  },
+  {
+    "name": "tailwind theme import entrypoint",
+    "css": "@import \"tailwindcss/theme\"; @tailwind utilities;",
+    "candidates": ["bg-red-500"]
+  },
+  {
+    "name": "tailwind theme static import entrypoint",
+    "css": "@import \"tailwindcss/theme\" theme(static); @tailwind utilities;",
+    "candidates": ["bg-red-500"]
+  },
+  {
+    "name": "tailwind theme reference import entrypoint",
+    "css": "@import \"tailwindcss/theme\" theme(reference); @tailwind utilities;",
+    "candidates": ["bg-red-500"]
+  },
+  {
+    "name": "tailwind theme reference entrypoint",
+    "css": "@reference \"tailwindcss/theme\"; @tailwind utilities;",
+    "candidates": ["bg-red-500"]
+  },
+  {
+    "name": "tailwind theme escaped spacing names",
+    "css": "@theme { --spacing-*: initial; --spacing-1\\.5: 1.5px; --spacing-2_5: 2.5px; --spacing-3\\.5: 3.5px; --spacing-3_5: 3.5px; --spacing-foo\\/bar: 3rem; } @tailwind utilities;",
+    "candidates": ["m-1.5", "m-2.5", "m-2_5", "m-3.5", "m-foo/bar"]
+  },
+  {
+    "name": "tailwind arbitrary values theme fallback underscore handling",
+    "css": "@theme { --spacing-1_5: 1.5rem; --spacing-2_5: 2.5rem; } @tailwind utilities;",
+    "candidates": ["bg-[no-repeat_url(./my_file.jpg)]", "ml-[var(--spacing-1_5,_var(--spacing-2_5,_1rem))]", "ml-[theme(--spacing-1_5,theme(--spacing-2_5,_1rem)))]"]
+  },
+  {
+    "name": "prefixed tailwind theme reference import",
+    "css": "@import \"tailwindcss/theme\" theme(reference prefix(tw)); @tailwind utilities;",
+    "candidates": ["tw:bg-red-500", "bg-red-500"]
+  },
+  {
+    "name": "tailwind full reference entrypoint",
+    "css": "@reference \"tailwindcss\"; .foo { @apply bg-red-500; }",
+    "candidates": []
+  },
+  {
+    "name": "tailwind full import entrypoint flex",
+    "css": "@import \"tailwindcss\";",
+    "candidates": ["flex"]
+  },
+  {
+    "name": "tailwind full import entrypoint theme utility",
+    "css": "@import \"tailwindcss\";",
+    "candidates": ["bg-red-500"]
+  },
+  {
+    "name": "tailwind full import entrypoint with prefix",
+    "css": "@import \"tailwindcss\" prefix(tw);",
+    "candidates": ["tw:font-mono", "font-mono"]
+  },
+  {
+    "name": "tailwind full import entrypoint authored apply",
+    "css": "@import \"tailwindcss\"; .foo { @apply p-2; }",
+    "candidates": []
+  },
+  {
+    "name": "tailwind full import entrypoint prefixed spacing",
+    "css": "@import \"tailwindcss\" prefix(tw);",
+    "candidates": ["tw:p-2"]
+  },
+  {
+    "name": "tailwind full import entrypoint alpha color",
+    "css": "@import \"tailwindcss\";",
+    "candidates": ["bg-red-500/50"]
+  },
+  {
+    "name": "tailwind full import entrypoint prefixed alpha color",
+    "css": "@import \"tailwindcss\" prefix(tw);",
+    "candidates": ["tw:bg-red-500/50"]
+  },
+  {
+    "name": "tailwind full import entrypoint prefixed font weight",
+    "css": "@import \"tailwindcss\" prefix(tw);",
+    "candidates": ["tw:font-bold"]
+  },
+  {
+    "name": "tailwind full import entrypoint prefixed transition defaults",
+    "css": "@import \"tailwindcss\" prefix(tw);",
+    "candidates": ["tw:transition"]
+  },
+  {
+    "name": "tailwind full import entrypoint prefixed authored apply",
+    "css": "@import \"tailwindcss\" prefix(tw); .foo { @apply tw:p-2; }",
+    "candidates": []
+  },
+  {
+    "name": "custom theme alpha color",
+    "css": "@theme { --color-potato: #7a4724; } @tailwind utilities;",
+    "candidates": ["bg-potato/50"]
+  },
+  {
+    "name": "prefixed custom theme alpha color",
+    "css": "@theme prefix(tw) { --color-potato: #7a4724; } @tailwind utilities;",
+    "candidates": ["tw:bg-potato/50"]
+  },
+  {
+    "name": "custom theme animation keyframes",
+    "css": "@theme { --animate-foo: used 1s infinite; @keyframes used { to { opacity: 1; } } @keyframes unused { to { opacity: 0; } } } @tailwind utilities;",
+    "candidates": ["animate-foo"]
+  },
+  {
+    "name": "prefixed custom theme animation keyframes",
+    "css": "@theme prefix(tw) { --animate-foo: used 1s infinite; @keyframes used { to { opacity: 1; } } @keyframes unused { to { opacity: 0; } } } @tailwind utilities;",
+    "candidates": ["tw:animate-foo"]
+  },
+  {
+    "name": "static theme animation keyframes",
+    "css": "@theme static { --animate-foo: used 1s infinite; --animate-bar: unused-but-kept 1s infinite; @keyframes used { to { opacity: 1; } } @keyframes unused-but-kept { to { opacity: 0; } } } @tailwind utilities;",
+    "candidates": ["animate-foo"]
+  },
+  {
+    "name": "arbitrary animation without theme keyframes",
+    "css": "@theme { --animate-spin: spin 1s linear infinite; } @tailwind utilities;",
+    "candidates": ["animate-[bounce_1s_infinite]"]
+  },
+  {
+    "name": "theme keyframes referenced by authored css",
+    "css": "@theme { @keyframes used { to { opacity: 1; } } @keyframes unused { to { opacity: 0; } } } .foo { animation: used 1s infinite; } @tailwind utilities;",
+    "candidates": []
+  },
+  {
+    "name": "source inline candidate",
+    "css": "@source inline(\"underline\"); @tailwind utilities;",
+    "candidates": []
+  },
+  {
+    "name": "source inline brace expansion",
+    "css": "@theme { --color-red-100: red; --color-red-200: blue; } @source inline(\"block bg-red-{100..200..100}\"); @tailwind utilities;",
+    "candidates": []
+  },
+  {
+    "name": "source inline nested brace expansion",
+    "css": "@theme { --color-red-50: red; --color-red-100: red; --color-red-200: red; --color-red-300: red; --color-red-400: red; --color-red-500: red; --color-red-600: red; --color-red-700: red; --color-red-800: red; --color-red-900: red; --color-red-950: red; } @source inline(\"bg-red-{50,{100..900..100},950}\"); @tailwind utilities;",
+    "candidates": []
+  },
+  {
+    "name": "source not inline candidate",
+    "css": "@theme { --breakpoint-sm: 40rem; --breakpoint-md: 48rem; --breakpoint-lg: 64rem; --breakpoint-xl: 80rem; --breakpoint-2xl: 96rem; } @source not inline(\"container\"); @tailwind utilities;",
+    "candidates": ["container"]
+  },
+  {
+    "name": "source inline invalid candidate",
+    "css": "@source inline(\"my-cucumber\"); @tailwind utilities;",
+    "candidates": []
+  },
+  {
+    "name": "authored css apply nested custom utility",
+    "css": "@theme { --color-green-500: green; --color-red-500: red; --color-indigo-500: indigo; } @tailwind utilities; @utility test2 { @apply test; } @utility test { @apply bg-green-500; &:hover { @apply bg-red-500; } &:disabled { @apply bg-indigo-500; } } .foo { @apply test2; }",
+    "candidates": ["test", "test2"]
+  },
+  {
+    "name": "authored css apply forward custom utilities",
+    "css": "@utility bar { &:before { content: 'bar'; } } .foo { @apply bar baz; } @utility baz { &:after { content: 'baz'; } } @tailwind utilities;",
+    "candidates": []
+  },
+  {
+    "name": "custom utility recursive apply variants in layer",
+    "css": "@tailwind utilities; @layer base { body { @apply a; } } @utility a { @apply b; } @utility b { @apply focus:c; } @utility c { @apply my-flex!; } @utility my-flex { @apply flex; }",
+    "candidates": ["a", "b", "c", "flex", "my-flex"]
+  },
+  {
+    "name": "authored css apply ignores utilities important flag",
+    "css": "@import \"tailwindcss/utilities\" important; .flex-explicitly-important { @apply flex!; } .flex-not-important { @apply flex; }",
+    "candidates": ["flex"]
+  },
+  {
+    "name": "functional utility bare integer",
+    "css": "@utility tab-* { tab-size: --value(integer); } @tailwind utilities;",
+    "candidates": ["tab-4", "tab-foo", "tab-[7]"]
+  },
+  {
+    "name": "functional utility literal declaration",
+    "css": "@utility tab-* { tab-size: 4; } @tailwind utilities;",
+    "candidates": ["tab", "tab-foo"]
+  },
+  {
+    "name": "functional utility important modifiers",
+    "css": "@utility tab-* { tab-size: --value(integer); } @tailwind utilities;",
+    "candidates": ["tab-4", "tab-4!", "!tab-4", "hover:tab-4!", "hover:!tab-4"]
+  },
+  {
+    "name": "functional utility arbitrary integer",
+    "css": "@utility tab-* { tab-size: --value([integer]); } @tailwind utilities;",
+    "candidates": ["tab-[7]", "tab-4"]
+  },
+  {
+    "name": "functional utility theme namespace",
+    "css": "@theme reference { --tab-size-github: 8; } @utility tab-* { tab-size: --value(--tab-size); } @tailwind utilities;",
+    "candidates": ["tab-github", "tab-8"]
+  },
+  {
+    "name": "functional utility double dash theme wildcard",
+    "css": "@theme reference { --color-border-0: #e5e7eb; --color-border-1: #d1d5db; } @utility border--* { border-color: --value(--color-border-*, [color]); } @tailwind utilities;",
+    "candidates": ["border--0", "border--1", "border--3"]
+  },
+  {
+    "name": "functional utility mixed value sources",
+    "css": "@theme reference { --tab-size-github: 8; } @utility tab-* { tab-size: --value([integer]); tab-size: --value(integer); tab-size: --value(--tab-size); } @tailwind utilities;",
+    "candidates": ["tab-github", "tab-76", "tab-[123]", "tab-[#0088cc]"]
+  },
+  {
+    "name": "functional utility coexists with core utility",
+    "css": "@utility opacity-* { opacity: --value(number); } @tailwind utilities;",
+    "candidates": ["opacity-50", "opacity-[.25]"]
+  },
+  {
+    "name": "functional utility modifier",
+    "css": "@utility tab-* { tab-size: --value(integer); line-height: --modifier(integer); } @tailwind utilities;",
+    "candidates": ["tab-123", "tab-123/25", "tab-123/foo"]
+  },
+  {
+    "name": "functional utility modifiers",
+    "css": "@theme reference { --value-sm: 14px; --modifier-7: 28px; } @utility example-* { --value: --value(--value, [length]); --modifier: --modifier(--modifier, [length]); --modifier-with-calc: calc(--modifier(--modifier, [length]) * 2); --modifier-literals: --modifier('literal', 'literal-2'); } @tailwind utilities;",
+    "candidates": ["example-sm", "example-sm/7", "example-[12px]", "example-[12px]/[16px]", "example-sm/literal", "example-sm/literal-2", "example-foo", "example-foo/[12px]"]
+  },
+  {
+    "name": "functional utility fractions",
+    "css": "@theme reference { --example-video: 16 / 9; } @utility example-* { --value: --value(--example, ratio, [ratio]); } @tailwind utilities;",
+    "candidates": ["example-video", "example-1/1", "example-[7/9]", "example-foo"]
+  },
+  {
+    "name": "functional utility spacing shorthand",
+    "css": "@theme { --spacing: 4px; } @utility example-* { margin: --spacing(--value(number)); } @tailwind utilities;",
+    "candidates": ["example-12"]
+  },
+  {
+    "name": "functional utility spacing shorthand inline theme",
+    "css": "@theme inline reference { --spacing: 4px; } @utility example-* { margin: --spacing(--value(number)); } @tailwind utilities;",
+    "candidates": ["example-12"]
+  },
+  {
+    "name": "functional utility subnamespace theme lookup",
+    "css": "@theme reference { --text-xs: 0.75rem; --text-xs--line-height: calc(1 / 0.75); } @utility example-* { font-size: --value(--text); line-height: --value(--text --line-height); line-height: --modifier(number); } @tailwind utilities;",
+    "candidates": ["example-xs", "example-xs/6"]
+  },
+  {
+    "name": "duplicate functional utility prefix keeps first definition",
+    "css": "@theme { --color-red-500: #ef4444; --spacing: 0.25rem; } @utility foo-* { color: --value(--color-*); } @utility foo-* { font-size: --spacing(--value(number)); } @tailwind utilities;",
+    "candidates": ["foo-red-500", "foo-123"]
+  },
+  {
+    "name": "functional utility theme variables only emitted when used",
+    "css": "@theme { --example-foo: red; --color-red-500: #f00; } @utility example-* { color: var(--color-red-500); background-color: --value(--example); } @tailwind utilities;",
+    "candidates": ["flex"]
+  },
+  {
+    "name": "functional utility theme variables emitted when used",
+    "css": "@theme { --example-foo: red; --color-red-500: #f00; } @utility example-* { color: var(--color-red-500); background-color: --value(--example); } @tailwind utilities;",
+    "candidates": ["example-foo"]
+  },
+  {
+    "name": "prefixed arbitrary theme function variables are unprefixed",
+    "css": "@theme prefix(tw) { --color-red:#f00; --color-green:#0f0; --breakpoint-sm:640px; } @tailwind utilities;",
+    "candidates": ["tw:[color:theme(--color-red)]", "tw:text-[theme(--color-red)]"]
+  },
+  {
+    "name": "prefixed arbitrary theme function rejects prefixed variables",
+    "css": "@theme reference prefix(tw) { --color-red:#f00; --color-green:#0f0; --breakpoint-sm:640px; } @tailwind utilities;",
+    "candidates": ["tw:[color:theme(--tw-color-red)]", "tw:text-[theme(--tw-color-red)]"]
+  },
+  {
+    "name": "theme wildcard values can be unset",
+    "css": "@theme { --color-red:#f00; --color-blue:#00f; --text-sm:13px; --text-md:16px; --animate-spin:spin 1s infinite linear; @keyframes spin { to { transform: rotate(360deg); } } } @theme { --color-*: initial; --text-md: initial; --animate-*: initial; --keyframes-*: initial; } @theme { --color-green:#0f0; } @tailwind utilities;",
+    "candidates": ["accent-red", "accent-blue", "accent-green", "text-sm", "text-md"]
+  },
+  {
+    "name": "escaped theme wildcard values can be unset",
+    "css": "@theme { --color-red:#f00; --color-blue:#00f; --text-sm:13px; --text-md:16px; --animate-spin:spin 1s infinite linear; @keyframes spin { to { transform: rotate(360deg); } } } @theme { --color-\\*: initial; --text-md: initial; --animate-\\*: initial; --keyframes-\\*: initial; } @theme { --color-green:#0f0; } @tailwind utilities;",
+    "candidates": ["accent-red", "accent-blue", "accent-green", "text-sm", "text-md"]
+  },
+  {
+    "name": "all theme wildcard values can be unset",
+    "css": "@theme { --color-red:#f00; --color-blue:#00f; --font-size-sm:13px; --font-size-md:16px; } @theme { --*: initial; } @theme { --color-green:#0f0; } @tailwind utilities;",
+    "candidates": ["accent-red", "accent-blue", "accent-green", "text-sm", "text-md"]
+  },
+  {
+    "name": "font wildcard unset keeps font weight namespace",
+    "css": "@theme { --font-weight-bold:bold; --font-sans:sans-serif; --font-serif:serif; } @theme { --font-*: initial; --font-body:Inter; } @tailwind utilities;",
+    "candidates": ["font-bold", "font-sans", "font-serif", "font-body"]
+  },
+  {
+    "name": "inset wildcard unset keeps inset shadow namespace",
+    "css": "@theme { --inset-shadow-sm: inset 0 2px 4px rgb(0 0 0 / 0.05); --inset-lg: 100px; --inset-sm: 10px; } @theme { --inset-*: initial; --inset-md: 50px; } @tailwind utilities;",
+    "candidates": ["inset-shadow-sm", "inset-ring-thick", "inset-lg", "inset-sm", "inset-md"]
+  },
+  {
+    "name": "text wildcard unset keeps text side namespaces",
+    "css": "@theme { --text-color-potato:brown; --text-underline-offset-potato:4px; --text-indent-potato:6px; --text-decoration-thickness-potato:8px; --text-decoration-color-salad:yellow; --text-4xl:60px; } @theme { --text-*: initial; --text-lg:20px; } @tailwind utilities;",
+    "candidates": ["text-potato", "underline-offset-potato", "indent-potato", "decoration-potato", "decoration-salad", "text-lg"]
+  },
+  {
+    "name": "unused keyframes removed when animation unset",
+    "css": "@theme { --animate-foo: foo 1s infinite; --animate-foobar: foobar 1s infinite; @keyframes foo { to { opacity: 1; } } @keyframes foobar { to { opacity: 0; } } } @theme { --animate-foo: initial; } @tailwind utilities;",
+    "candidates": ["animate-foo", "animate-foobar"]
+  },
+  {
+    "name": "legacy max-w-screen emits used breakpoint variables",
+    "css": "@theme { --breakpoint-sm:40rem; --breakpoint-md:48rem; --breakpoint-lg:64rem; --breakpoint-xl:80rem; --breakpoint-2xl:96rem; } @tailwind utilities;",
+    "candidates": ["max-w-screen-sm", "max-w-screen-md", "max-w-screen-lg", "max-w-screen-xl", "max-w-screen-2xl"]
+  },
+  {
+    "name": "legacy start custom inset namespace",
+    "css": "@theme { --spacing:0.25rem; --inset-shadowned:1940px; } @tailwind utilities;",
+    "candidates": ["start-shadowned", "start-auto", "-start-full", "start-full", "start-3/4", "start-4", "-start-4", "start-[4px]"]
+  },
+  {
+    "name": "legacy start reference spacing fallback excludes inset shadow namespace",
+    "css": "@theme reference { --spacing:0.25rem; --inset-shadow-sm:inset 0 1px 1px rgb(0 0 0 / 0.05); } @tailwind utilities;",
+    "candidates": ["start-shadow-sm", "start", "start--1", "start--1/2", "start--1/-2", "start-1/-2", "start-auto/foo", "-start-full/foo", "start-full/foo", "start-3/4/foo", "start-4/foo", "-start-4/foo", "start-[4px]/foo"]
+  },
+  {
+    "name": "legacy end custom inset namespace",
+    "css": "@theme { --spacing:0.25rem; --inset-shadowned:1940px; } @tailwind utilities;",
+    "candidates": ["end-shadowned", "end-auto", "-end-full", "end-full", "end-3/4", "end-4", "-end-4", "end-[4px]"]
+  },
+  {
+    "name": "logical spacing utilities prefer exact theme spacing tokens",
+    "css": "@theme { --spacing-1:1px; --spacing-2:2px; --spacing-3:3px; } @tailwind utilities;",
+    "candidates": ["scroll-ms-1", "scroll-me-2", "scroll-mx-3", "scroll-ps-1", "scroll-pe-2", "scroll-px-3", "ms-1", "me-2", "mx-3", "ps-1", "pe-2", "px-3"]
+  },
+  {
+    "name": "space between utilities prefer exact theme spacing tokens",
+    "css": "@theme { --spacing-0:0px; --spacing-2:0.5rem; --spacing-4:1rem; } @tailwind utilities;",
+    "candidates": ["mx-0", "gap-4", "space-x-2"]
+  },
+  {
+    "name": "width utilities prefer exact theme width tokens",
+    "css": "@theme { --width-1\\/2:75%; --width-75\\%:50%; } @tailwind utilities;",
+    "candidates": ["w-1/2", "w-75%"]
+  },
+  {
+    "name": "legacy theme function in arbitrary declaration candidates uses custom theme",
+    "css": "@tailwind utilities; @theme { --breakpoint-sm:40rem; --color-red-500:#f00; }",
+    "candidates": ["sm:[--color:theme(colors.red[500])]"]
+  },
+  {
+    "name": "arbitrary rounded theme function skips missing values",
+    "css": "@tailwind utilities; @theme reference { --radius-sm:2rem; }",
+    "candidates": ["rounded-[theme(--radius-sm)]", "rounded-[theme(i.do.not.exist)]", "rounded-[theme(--i-do-not-exist)]"]
+  },
+  {
+    "name": "authored css legacy font weight theme lookup",
+    "css": ".semi { font-weight: theme(fontWeight.semibold); }",
+    "candidates": []
+  },
+  {
+    "name": "custom utility with more declarations sorts before matching text size",
+    "css": "@theme { --text-sm:0.875rem; --text-sm--line-height:calc(1.25 / 0.875); } @tailwind utilities; @utility fancy-text { font-size: var(--text-4xl); line-height: var(--text-4xl--line-height); font-weight: var(--font-weight-bold); }",
+    "candidates": ["fancy-text", "text-sm"]
+  },
+  {
+    "name": "theme reference animation keyframes are emitted after all utilities",
+    "css": "@theme reference { --animate-foo:foo 1s infinite; @keyframes foo { 0%, 100% { color: red; } 50% { color: blue; } } } @theme { --color-pink:pink; } @tailwind utilities;",
+    "candidates": ["bg-pink", "animate-foo"]
+  }
+]

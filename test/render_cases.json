@@ -1,0 +1,65 @@
+[
+  {
+    "name": "provided internet card snippet",
+    "widths": [500, 800, 1100, 1400],
+    "html": "<div class=\"p-10\">\n  <h1 class=\"text-5xl\">TailwindCSS</h1>\n  <hr class=\"mb-5\">\n  <p class=text-sm>\n      Welcome to my Tailwind CSS example page. Everything you see here is built entirely with Tailwinds CSS \n    and <b>NO</b> custom css has been added. We still have a lot to learn and i belief we'll improve on     building decent blazor styles components using the Tailwind CSS framework.\n  </p>\n  \n  <div class=\"border border-l-8 border-blue-800 shadow rounded-lg mt-8 mb-8\">\n    <h5 class=\"text-3xl font-bold m-5\">Heading</h5>\n    <p class=\"text-gray-700 text-sm ml-5 mr-5 mb-8\">\n      Content goes here\n    </p>\n    <div class=\"bg-gray-100 pt-5 pb-5 border\">\n      <p class=\"text-gray-700 text-bold text-sm ml-5 mr-5\">\n        Footer content goes here\n      </p>\n    </div>\n  </div>\n  \n  \n  <h5 class=\"text-3xl\">Responsive Behaviour</h5>\n  <hr class=\"mb-5\">\n  <p class=\"underline \n            sm:no-underline\n            md:line-through\n            lg:underline\n            xl:no-underline\">\n      The quick brown fox jumped over the lazy dog.\n  </p>\n  \n  <hr class=\"mt-5 mb-5\">\n  <div class=\"text-right\">\n      <button class=\"bg-red-500 rounded-lg py-2 px-5 shadow-lg text-green-100 text-sm hover:bg-red-600\">\n        Cancel\n      </button>\n      <button class=\"bg-blue-800 rounded-lg py-2 px-5 shadow-lg text-green-100 text-sm hover:bg-blue-900\">\n        Submit\n      </button>\n    \n    <button class=\"py-3 px-8 bg-red-900 rounded shadow text-white\">\n      My Button\n    </button>\n  </div>\n</div>",
+    "checks": [
+      {
+        "label": "heading",
+        "selector": "h1",
+        "properties": ["font-size", "font-weight", "line-height", "margin-top", "margin-bottom"]
+      },
+      {
+        "label": "unquoted paragraph class",
+        "selector": "body > div > p.text-sm",
+        "properties": ["font-size", "line-height", "margin-top", "margin-bottom"]
+      },
+      {
+        "label": "card border and spacing",
+        "selector": ".border-l-8",
+        "properties": [
+          "border-left-width",
+          "border-left-style",
+          "border-left-color",
+          "border-top-width",
+          "border-top-style",
+          "border-radius",
+          "margin-top",
+          "margin-bottom",
+          "box-shadow"
+        ]
+      },
+      {
+        "label": "card footer",
+        "selector": ".bg-gray-100",
+        "properties": ["background-color", "padding-top", "padding-bottom", "border-top-width", "border-top-style"]
+      },
+      {
+        "label": "responsive text decoration",
+        "selector": ".underline",
+        "properties": ["text-decoration-line"]
+      },
+      {
+        "label": "button",
+        "selector": "button",
+        "properties": [
+          "background-color",
+          "border-radius",
+          "box-shadow",
+          "color",
+          "font-size",
+          "line-height",
+          "padding-top",
+          "padding-right",
+          "padding-bottom",
+          "padding-left"
+        ]
+      },
+      {
+        "label": "horizontal rule",
+        "selector": "hr",
+        "properties": ["height", "border-top-width", "border-top-style", "margin-bottom"]
+      }
+    ]
+  }
+]

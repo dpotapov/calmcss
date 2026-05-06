@@ -1,0 +1,88 @@
+[
+  {
+    "name": "custom theme tokens and breakpoint",
+    "css": "@theme { --color-brand-500:#123456; --spacing-card:2.5rem; --radius-soft:1rem; --font-display:Inter, sans-serif; --ease-fluid:cubic-bezier(.3,0,0,1); --breakpoint-xs:30rem; } @tailwind utilities;",
+    "candidates": [
+      "bg-brand-500",
+      "text-brand-500",
+      "p-card",
+      "w-card",
+      "rounded-soft",
+      "font-display",
+      "ease-fluid",
+      "xs:block",
+      "xs:bg-brand-500",
+      "hover:bg-brand-500"
+    ]
+  },
+  {
+    "name": "prefixed theme variables",
+    "css": "@theme prefix(tw) { --color-red:#f00; --breakpoint-sm:640px; } @tailwind utilities;",
+    "candidates": ["tw:text-red", "text-red"]
+  },
+  {
+    "name": "theme important modifiers",
+    "css": "@theme { --color-brand:#123456; } @tailwind utilities;",
+    "candidates": ["text-brand", "text-brand!", "!text-brand", "hover:text-brand!", "hover:!text-brand"]
+  },
+  {
+    "name": "theme reference fallbacks",
+    "css": "@theme reference { --color-ref:#aabbcc; --spacing-ref:3rem; --breakpoint-ref:42rem; } @tailwind utilities;",
+    "candidates": ["bg-ref", "p-ref", "ref:block"]
+  },
+  {
+    "name": "inline theme values",
+    "css": "@theme inline { --color-inline:#aabbcc; --spacing-inline:3rem; --breakpoint-in:42rem; } @tailwind utilities;",
+    "candidates": ["bg-inline", "p-inline", "in:block"]
+  },
+  {
+    "name": "default theme overridden by regular theme",
+    "css": "@theme { --color-potato:#ac855b; } @theme default { --color-potato:#efb46b; } @tailwind utilities;",
+    "candidates": ["bg-potato"]
+  },
+  {
+    "name": "media theme default wrapper",
+    "css": "@media theme() { @theme { --color-potato:#ac855b; } } @media theme(default) { @theme { --color-potato:#efb46b; --color-tomato:tomato; } } @tailwind utilities;",
+    "candidates": ["bg-potato", "bg-tomato"]
+  },
+  {
+    "name": "media theme inline reference wrapper",
+    "css": "@media theme(reference inline) { @theme { --color-potato:#ac855b; --color-primary:var(--primary); } } @tailwind utilities;",
+    "candidates": ["bg-potato", "bg-primary"]
+  },
+  {
+    "name": "custom text leading and tracking",
+    "css": "@theme { --text-title:2rem; --text-title--line-height:2.25rem; --leading-tall:2; --tracking-wideish:.03em; } @tailwind utilities;",
+    "candidates": ["text-title", "leading-tall", "tracking-wideish"]
+  },
+  {
+    "name": "empty theme layers are removed",
+    "css": "@layer theme1 { @layer theme2 { @theme { --color-tomato:#e10c04; --color-potato:#ac855b; } } } @tailwind utilities;",
+    "candidates": ["underline"]
+  },
+  {
+    "name": "oklch color opacity fallback",
+    "css": "@theme { --color-red-500:oklch(63.7% 0.237 25.331); } @tailwind utilities;",
+    "candidates": ["text-red-500/50"]
+  },
+  {
+    "name": "oklch color opacity fallback through var",
+    "css": "@theme { --color-red:var(--color-red-500); --color-red-500:oklch(63.7% 0.237 25.331); } @tailwind utilities;",
+    "candidates": ["text-red/50"]
+  },
+  {
+    "name": "oklch color opacity fallback with theme opacity variable",
+    "css": "@theme { --my-half:50%; --color-red-500:oklch(63.7% 0.237 25.331); } @tailwind utilities;",
+    "candidates": ["text-red-500/(--my-half)"]
+  },
+  {
+    "name": "oklch color opacity fallback with unknown opacity variable",
+    "css": "@theme { --color-red-500:oklch(63.7% 0.237 25.331); } @tailwind utilities;",
+    "candidates": ["text-red-500/(--my-opacity)"]
+  },
+  {
+    "name": "authored color mix fallback with tight var syntax",
+    "css": "@theme { --color-red-500:oklch(63.7% 0.237 25.331); } @tailwind utilities; .text-red-500\\/50 { color: color-mix(in oklab,var(--color-red-500)50%,transparent); }",
+    "candidates": []
+  }
+]

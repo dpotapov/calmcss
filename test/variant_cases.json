@@ -1,0 +1,183 @@
+[
+  {
+    "name": "bodyless selector custom variant",
+    "css": "@custom-variant hocus (&:hover, &:focus); @tailwind utilities;",
+    "candidates": ["hocus:underline"]
+  },
+  {
+    "name": "legacy variant bodyless alias",
+    "css": "@variant hocus (&:hover, &:focus); @tailwind utilities;",
+    "candidates": ["hocus:underline"]
+  },
+  {
+    "name": "legacy variant body alias",
+    "css": "@variant hocus { &:hover { @slot; } &:focus { @slot; } } @tailwind utilities;",
+    "candidates": ["hocus:underline"]
+  },
+  {
+    "name": "authored css dark variant",
+    "css": ".btn { background: black; @variant dark { background: white; } }",
+    "candidates": []
+  },
+  {
+    "name": "authored css nested built-in variants",
+    "css": ".btn { background: black; @variant disabled { @variant focus { background: white; } } } @tailwind utilities;",
+    "candidates": ["disabled:focus:underline"]
+  },
+  {
+    "name": "authored css custom variant defined later",
+    "css": ".btn { background: black; @variant hocus { background: white; } } @custom-variant hocus (&:hover, &:focus);",
+    "candidates": []
+  },
+  {
+    "name": "authored css arbitrary selector variant",
+    "css": ".btn { background: black; @variant [&:is(:hover,:focus)] { background: red; } } @tailwind utilities;",
+    "candidates": []
+  },
+  {
+    "name": "authored css aria variant",
+    "css": ".btn { background: black; @variant aria-disabled { background: red; } } @tailwind utilities;",
+    "candidates": []
+  },
+  {
+    "name": "authored css data variant",
+    "css": ".btn { background: black; @variant data-a { background: red; } } @tailwind utilities;",
+    "candidates": []
+  },
+  {
+    "name": "authored css nested data variants",
+    "css": ".btn { background: black; @variant data-a { background: red; @variant data-d { background: blue; } } } @tailwind utilities;",
+    "candidates": []
+  },
+  {
+    "name": "authored css nested hover focus variants",
+    "css": ".btn { background: black; @variant hover { @variant focus { background: red; } } } @tailwind utilities;",
+    "candidates": []
+  },
+  {
+    "name": "authored css top-level variant blocks",
+    "css": ".btn { background: black; @variant dark { background: white; } } @variant hover { @variant landscape { .btn2 { color: red; } } } @variant hover { .foo { color: red; } @variant landscape { .bar { color: blue; } } .baz { @variant portrait { color: green; } } } @media something { @variant landscape { @page { color: red; } } }",
+    "candidates": []
+  },
+  {
+    "name": "authored css selector list variants",
+    "css": "@theme reference { --breakpoint-md: 768px; } .foo, .bar { @variant hover { @apply flex; } @variant md { @apply block; } } @tailwind utilities;",
+    "candidates": []
+  },
+  {
+    "name": "authored css container and arbitrary variants",
+    "css": "@theme inline reference { --container-md: 768px; } .btn { background: black; @variant @md { @variant [&.foo] { background: white; } } }",
+    "candidates": []
+  },
+  {
+    "name": "breakpoint variant escapes leading digit",
+    "css": "@theme { --breakpoint-sm:640px; --breakpoint-md:768px; --breakpoint-lg:1024px; --breakpoint-xl:1280px; --breakpoint-2xl:1536px; } @tailwind utilities;",
+    "candidates": ["sm:flex", "md:flex", "lg:flex", "xl:flex", "2xl:flex"]
+  },
+  {
+    "name": "custom breakpoint variant escapes leading digit",
+    "css": "@theme { --breakpoint-10xl:5000px; } @tailwind utilities;",
+    "candidates": ["10xl:flex"]
+  },
+  {
+    "name": "bodyless media custom variant",
+    "css": "@custom-variant any-hover (@media (any-hover: hover)); @tailwind utilities;",
+    "candidates": ["any-hover:hover:underline"]
+  },
+  {
+    "name": "bodyless media custom variant with not variant",
+    "css": "@custom-variant foo (@media foo); @layer utilities { @tailwind utilities; }",
+    "candidates": ["foo:flex", "group-foo:flex", "peer-foo:flex", "has-foo:flex", "not-foo:flex"]
+  },
+  {
+    "name": "custom variant overrides built in variant",
+    "css": "@custom-variant dark (&:is([data-theme=dark] *)); @layer utilities { @tailwind utilities; }",
+    "candidates": ["rtl:flex", "dark:flex", "starting:flex"]
+  },
+  {
+    "name": "custom variant with custom utility",
+    "css": "@custom-variant hocus (&:hover, &:focus); @utility text-trim { text-box-trim: both; text-box-edge: cap alphabetic; } @tailwind utilities;",
+    "candidates": ["hocus:text-trim"]
+  },
+  {
+    "name": "custom variant after use",
+    "css": "@custom-variant hocus (&:hover, &:focus); @tailwind utilities;",
+    "htmlBeforeCss": true,
+    "candidates": ["hocus:flex"]
+  },
+  {
+    "name": "body selector custom variant",
+    "css": "@custom-variant hocus { &:hover, &:focus { @slot; } } @tailwind utilities;",
+    "candidates": ["hocus:flex"]
+  },
+  {
+    "name": "body nested selector custom variant",
+    "css": "@custom-variant nested-selectors { &:hover { &:focus { @slot; } } } @tailwind utilities;",
+    "candidates": ["nested-selectors:flex"]
+  },
+  {
+    "name": "body parallel selector custom variant",
+    "css": "@custom-variant parallel-style-rules { &:hover { @slot; } &:focus { @slot; } } @tailwind utilities;",
+    "candidates": ["parallel-style-rules:flex"]
+  },
+  {
+    "name": "body selector custom variant group and peer",
+    "css": "@custom-variant hocus { &:hover, &:focus { @slot; } } @tailwind utilities;",
+    "candidates": ["group-hocus:flex", "peer-hocus:flex"]
+  },
+  {
+    "name": "body nested selector custom variant group and peer are rejected",
+    "css": "@custom-variant nested-selectors { &:hover { &:focus { @slot; } } } @tailwind utilities;",
+    "candidates": ["group-nested-selectors:flex", "peer-nested-selectors:flex"]
+  },
+  {
+    "name": "body nested media custom variant",
+    "css": "@custom-variant nested-at-rules { @media foo { @media bar { @slot; } } } @tailwind utilities;",
+    "candidates": ["nested-at-rules:flex"]
+  },
+  {
+    "name": "body media conditions custom variant",
+    "css": "@custom-variant multiple-media-conditions { @media foo, bar { @slot; } } @tailwind utilities;",
+    "candidates": ["multiple-media-conditions:flex"]
+  },
+  {
+    "name": "body parallel media custom variant",
+    "css": "@custom-variant parallel-at-rules { @media foo { @slot; } @media bar { @slot; } } @tailwind utilities;",
+    "candidates": ["parallel-at-rules:flex"]
+  },
+  {
+    "name": "body mixed selector and media custom variant",
+    "css": "@custom-variant parallel-mixed-rules { &:hover { @slot; } @media bar { @slot; } } @tailwind utilities;",
+    "candidates": ["parallel-mixed-rules:flex"]
+  },
+  {
+    "name": "body mixed nested media custom variant",
+    "css": "@custom-variant mixed-nested { &:hover { @slot; } @media foo { @media bar { @slot; } } } @tailwind utilities;",
+    "candidates": ["mixed-nested:flex"]
+  },
+  {
+    "name": "custom variant reuses built in variants",
+    "css": "@custom-variant hocus { @variant hover { @variant focus { @slot; } } } @tailwind utilities;",
+    "candidates": ["hocus:flex"]
+  },
+  {
+    "name": "custom variant reuses custom variant defined later",
+    "css": "@custom-variant hocus { @variant custom-hover { @variant focus { @slot; } } } @custom-variant custom-hover (&:hover); @tailwind utilities;",
+    "candidates": ["hocus:flex"]
+  },
+  {
+    "name": "custom variant reuses overwritten built in variant",
+    "css": "@custom-variant hocus { @variant hover { @variant focus { @slot; } } } @custom-variant hover (&:hover); @tailwind utilities;",
+    "candidates": ["hocus:flex"]
+  },
+  {
+    "name": "custom variant reuses body variant slots",
+    "css": "@custom-variant hocus { @variant hover { @variant focus { @slot; } } } @custom-variant hover { &:hover { @slot; } &[data-hover] { @slot; } } @tailwind utilities;",
+    "candidates": ["hocus:flex"]
+  },
+  {
+    "name": "later custom variant definition wins",
+    "css": "@custom-variant foo { @variant hover { @slot; } } @custom-variant foo ([data-broken-circle] &); @tailwind utilities;",
+    "candidates": ["foo:flex"]
+  }
+]
