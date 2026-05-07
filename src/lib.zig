@@ -112,31 +112,29 @@ const Compiler = struct {
 
     fn collect(self: *Compiler, chunks: []const Chunk) !void {
         for (chunks) |chunk| {
-            _ = chunk.name;
-            try self.collectDefinitions(chunk.content);
+            try self.collectDefinitions(chunk.content, isCssChunkName(chunk.name));
         }
         for (chunks) |chunk| {
             _ = chunk.name;
             try self.collectSourceDirectives(chunk.content);
         }
         for (chunks) |chunk| {
-            _ = chunk.name;
-            try self.collectContent(chunk.content);
+            try self.collectContent(chunk.content, isCssChunkName(chunk.name));
         }
     }
 
-    fn collectDefinitions(self: *Compiler, content: []const u8) !void {
+    fn collectDefinitions(self: *Compiler, content: []const u8, is_css_chunk: bool) !void {
         try self.collectBuiltinThemeImports(content);
         try self.collectThemeVariables(content);
         try self.collectCustomMedia(content);
         try self.collectCustomUtilities(content);
         try self.collectCustomVariants(content);
         try self.collectLegacyVariantDefinitions(content);
-        try self.collectAuthoredCssBlocks(content);
+        try self.collectAuthoredCssBlocks(content, is_css_chunk);
     }
 
-    fn collectContent(self: *Compiler, content: []const u8) !void {
-        const css_mode = looksLikeCssChunk(content);
+    fn collectContent(self: *Compiler, content: []const u8, is_css_chunk: bool) !void {
+        const css_mode = is_css_chunk or looksLikeCssChunk(content);
         var i: usize = 0;
         while (i < content.len) {
             if (css_mode and skipCssCommentOrStringAt(content, &i)) continue;
@@ -928,7 +926,7 @@ const Compiler = struct {
         }
     }
 
-    fn collectAuthoredCssBlocks(self: *Compiler, content: []const u8) !void {
+    fn collectAuthoredCssBlocks(self: *Compiler, content: []const u8, is_css_chunk: bool) !void {
         var search_start: usize = 0;
         var found_style = false;
         while (std.mem.indexOf(u8, content[search_start..], "<style")) |rel| {
@@ -942,7 +940,7 @@ const Compiler = struct {
             search_start = body_end + "</style>".len;
         }
 
-        if (!found_style and looksLikeCssChunk(content)) {
+        if (!found_style and (is_css_chunk or looksLikeCssChunk(content))) {
             try self.authored_css_blocks.append(self.allocator, content);
         }
     }
@@ -1958,6 +1956,25 @@ fn styleBlockEndAt(input: []const u8, index: usize) ?usize {
     const body_start = index + tag_end_rel + 1;
     const close_rel = std.mem.indexOf(u8, input[body_start..], "</style>") orelse return null;
     return body_start + close_rel + "</style>".len;
+}
+
+fn isCssChunkName(name: []const u8) bool {
+    return endsWithIgnoreCase(name, ".css") or containsIgnoreCase(name, ".css.");
+}
+
+fn endsWithIgnoreCase(value: []const u8, suffix: []const u8) bool {
+    if (suffix.len > value.len) return false;
+    return std.ascii.eqlIgnoreCase(value[value.len - suffix.len ..], suffix);
+}
+
+fn containsIgnoreCase(value: []const u8, needle: []const u8) bool {
+    if (needle.len == 0) return true;
+    if (needle.len > value.len) return false;
+    var i: usize = 0;
+    while (i + needle.len <= value.len) : (i += 1) {
+        if (std.ascii.eqlIgnoreCase(value[i .. i + needle.len], needle)) return true;
+    }
+    return false;
 }
 
 fn looksLikeCssChunk(content: []const u8) bool {
@@ -13065,6 +13082,37 @@ test "CSS candidate scan ignores comments and string literals" {
     try std.testing.expect(std.mem.indexOf(u8, css, ".bg-blue-500{") == null);
     try std.testing.expect(std.mem.indexOf(u8, css, ".flex{") == null);
     try std.testing.expect(std.mem.indexOf(u8, css, ".p-4{") == null);
+}
+
+test "CSS chunk name preserves stylesheets without at-rules" {
+    const input =
+        \\.foo { color: red; }
+        \\.bar::before { content: "p-4 text-red-500"; }
+        \\/* flex underline */
+    ;
+    const css = try compileAlloc(std.testing.allocator, &.{.{ .name = "plain.css", .content = input }}, .{});
+    defer std.testing.allocator.free(css);
+
+    try std.testing.expect(std.mem.indexOf(u8, css, ".foo{color:red;}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, css, ".bar::before{content:\"p-4 text-red-500\";}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, css, ".p-4{") == null);
+    try std.testing.expect(std.mem.indexOf(u8, css, ".text-red-500{") == null);
+    try std.testing.expect(std.mem.indexOf(u8, css, ".flex{") == null);
+    try std.testing.expect(std.mem.indexOf(u8, css, ".underline{") == null);
+}
+
+test "CSS temp chunk name preserves stylesheets without at-rules" {
+    const input =
+        \\.foo { color: red; }
+        \\.bar::before { content: "p-4 text-red-500"; }
+    ;
+    const css = try compileAlloc(std.testing.allocator, &.{.{ .name = "plain.css.tmp", .content = input }}, .{});
+    defer std.testing.allocator.free(css);
+
+    try std.testing.expect(std.mem.indexOf(u8, css, ".foo{color:red;}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, css, ".bar::before{content:\"p-4 text-red-500\";}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, css, ".p-4{") == null);
+    try std.testing.expect(std.mem.indexOf(u8, css, ".text-red-500{") == null);
 }
 
 test "tailwind full import uses v4 defaults" {
