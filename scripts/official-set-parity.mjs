@@ -2,10 +2,10 @@ import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { compile } from 'tailwindcss'
 import { optimize } from '@tailwindcss/node'
 import { spawnFile } from './process.mjs'
+import { loadTailwindStylesheet, tailwindThemeUtilitiesImport } from './tailwind-stylesheet-loader.mjs'
 
 const root = process.env.CALMCSS_TAILWIND_SRC_ROOT
 const maxCandidates = Number.parseInt(process.env.CALMCSS_OFFICIAL_SET_MAX_CANDIDATES ?? '20', 10)
@@ -39,9 +39,7 @@ for (const file of await listTests(root)) {
   }
 }
 
-const themePath = fileURLToPath(import.meta.resolve('tailwindcss/theme.css'))
-const themeCss = await readFile(themePath, 'utf8')
-const tailwindInput = `${themeCss}\n@tailwind utilities;`
+const tailwindInput = tailwindThemeUtilitiesImport
 const dir = await mkdtemp(join(tmpdir(), 'calmcss-official-set-parity-'))
 
 let pass = 0
@@ -51,7 +49,7 @@ const diffs = []
 
 try {
   for (const [idx, block] of blocks.entries()) {
-    const tailwind = await compile(tailwindInput)
+    const tailwind = await compile(tailwindInput, { loadStylesheet: loadTailwindStylesheet })
     const expected = normalizeCss(optimize(tailwind.build(block.candidates), { minify: true }).code)
     if (expected.length === 0) {
       skippedEmpty += 1

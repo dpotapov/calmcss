@@ -59,7 +59,7 @@ Default `zig build` behavior:
 ```sh
 zig-out/bin/calmcss examples/input.html
 zig-out/bin/calmcss -i examples/input.html -o zig-out/example.css
-zig-out/bin/calmcss --chunk page.html=examples/input.html --config examples/calmcss.json
+zig-out/bin/calmcss --chunk page.html=examples/input.html --chunk component.html=examples/component.html
 ```
 
 If no input file is provided, `calmcss` reads from stdin.
@@ -85,17 +85,23 @@ Legacy `@variant` custom-variant aliases and authored CSS rules with nested
 `@variant` blocks are supported for common built-in, arbitrary selector,
 ARIA/data, container, and custom selector cases.
 These custom selector variants also compose with `group-*` and `peer-*` forms. The
-compiler intentionally avoids JavaScript configuration for portability. A JSON
-or YAML file can be passed with
-`--config`; strings in that file are scanned as another chunk, so `safelist`
-entries work without a JS runtime.
+compiler intentionally avoids JavaScript configuration for portability and v4
+parity. Put customization in CSS using directives like `@theme`, `@utility`,
+`@source`, and `@plugin`. Compatibility syntax that Tailwind v4 still accepts,
+such as `@tailwind utilities` and `theme(...)`, is kept for parity, but new
+examples should use CSS imports and CSS-first theme variables.
 
-```json
-{
-  "content": ["examples/**/*.html"],
-  "safelist": ["prose", "form-input", "form-checkbox"],
-  "plugins": ["forms", "typography"]
+```css
+@import "tailwindcss";
+
+@theme {
+  --font-display: Inter, sans-serif;
+  --background-image-gradient-text: linear-gradient(276deg, #ff008f, #4d3384);
 }
+
+@source inline("prose form-input form-checkbox");
+@plugin "@tailwindcss/typography";
+@plugin "@tailwindcss/forms";
 ```
 
 ## WASM ABI

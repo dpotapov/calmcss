@@ -5,9 +5,9 @@ import { existsSync } from 'node:fs'
 import { extname, normalize } from 'node:path'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { compile } from 'tailwindcss'
 import { spawnFile } from './process.mjs'
+import { loadTailwindStylesheet, tailwindFullImport } from './tailwind-stylesheet-loader.mjs'
 
 const casesPath = process.env.CALMCSS_RENDER_CASES ?? 'test/render_cases.json'
 const cases = JSON.parse(await readFile(casesPath, 'utf8'))
@@ -16,10 +16,6 @@ const maxDiffs = Number.parseInt(process.env.CALMCSS_RENDER_DIFFS ?? '20', 10)
 
 await spawnFile('zig', ['build'], { stdio: 'inherit' })
 
-const themePath = fileURLToPath(import.meta.resolve('tailwindcss/theme.css'))
-const preflightPath = fileURLToPath(import.meta.resolve('tailwindcss/preflight.css'))
-const officialThemeCss = await readFile(themePath, 'utf8')
-const officialPreflightCss = await readFile(preflightPath, 'utf8')
 const server = await startStaticServer()
 const browser = await startBrowser(chromePath)
 
@@ -30,7 +26,9 @@ const diffs = []
 try {
   for (const testCase of cases) {
     const candidates = extractCandidates(testCase.html)
-    const tailwind = await compile(`${officialThemeCss}\n${officialPreflightCss}\n@tailwind utilities;`)
+    const tailwind = await compile(tailwindFullImport, {
+      loadStylesheet: loadTailwindStylesheet,
+    })
     const officialCss = tailwind.build(candidates)
     const demo = await renderDemo(browser, server.url, testCase)
     const official = await renderOfficial(browser, testCase, officialCss, demo.viewportWidths)

@@ -1,10 +1,10 @@
 import { readFile, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { compile } from 'tailwindcss'
 import { optimize } from '@tailwindcss/node'
 import { spawnFile } from './process.mjs'
+import { loadTailwindStylesheet, tailwindThemeUtilitiesImport } from './tailwind-stylesheet-loader.mjs'
 
 const candidatesPath = process.env.CALMCSS_PARITY_CANDIDATES ?? 'test/parity_candidates.json'
 const candidates = JSON.parse(await readFile(candidatesPath, 'utf8'))
@@ -14,9 +14,7 @@ const maxDiffs = Number.parseInt(process.env.CALMCSS_PARITY_DIFFS ?? '20', 10)
 
 await spawnFile('zig', ['build'], { stdio: 'inherit' })
 
-const themePath = fileURLToPath(import.meta.resolve('tailwindcss/theme.css'))
-const themeCss = await readFile(themePath, 'utf8')
-const tailwindInput = `${themeCss}\n@tailwind utilities;`
+const tailwindInput = tailwindThemeUtilitiesImport
 const dir = await mkdtemp(join(tmpdir(), 'calmcss-parity-'))
 
 let pass = 0
@@ -25,7 +23,7 @@ const diffs = []
 
 try {
   for (const candidate of selected) {
-    const tailwind = await compile(tailwindInput)
+    const tailwind = await compile(tailwindInput, { loadStylesheet: loadTailwindStylesheet })
     const expected = normalizeCss(optimize(tailwind.build([candidate]), { minify: true }).code)
     const inputPath = join(dir, `${safeName(candidate)}.html`)
     await writeFile(inputPath, candidate)

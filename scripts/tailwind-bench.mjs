@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
-import { fileURLToPath } from 'node:url'
 import { compile } from 'tailwindcss'
 import { optimize } from '@tailwindcss/node'
+import { loadTailwindStylesheet, tailwindThemeUtilitiesImport } from './tailwind-stylesheet-loader.mjs'
 
 const fixture = process.argv[2]
 if (!fixture) {
@@ -11,9 +11,9 @@ if (!fixture) {
 
 const content = await readFile(fixture, 'utf8')
 const candidates = extractCandidates(content)
-const themePath = fileURLToPath(import.meta.resolve('tailwindcss/theme.css'))
-const themeCss = await readFile(themePath, 'utf8')
-const { build } = await compile(`${themeCss}\n@tailwind utilities;`)
+const { build } = await compile(tailwindThemeUtilitiesImport, {
+  loadStylesheet: loadTailwindStylesheet,
+})
 const css = optimize(build(candidates), { minify: true }).code
 process.stdout.write(css)
 

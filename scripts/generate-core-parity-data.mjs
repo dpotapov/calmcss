@@ -1,9 +1,9 @@
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { __unstable__loadDesignSystem, compile } from 'tailwindcss'
 import { optimize } from '@tailwindcss/node'
+import { loadTailwindStylesheet, tailwindThemeUtilitiesImport } from './tailwind-stylesheet-loader.mjs'
 
 const candidatesOut = process.argv[2] ?? 'test/parity_candidates.official.json'
 const parityDataOut = process.argv[3] ?? 'src/core_parity_data.zig'
@@ -39,14 +39,12 @@ for (const root of roots) {
   }
 }
 
-const themePath = fileURLToPath(import.meta.resolve('tailwindcss/theme.css'))
-const themeCss = await readFile(themePath, 'utf8')
-const tailwindInput = `${themeCss}\n@tailwind utilities;`
+const tailwindInput = tailwindThemeUtilitiesImport
 
 const valid = []
 const entries = []
 for (const candidate of [...candidates].sort()) {
-  const tailwind = await compile(tailwindInput)
+  const tailwind = await compile(tailwindInput, { loadStylesheet: loadTailwindStylesheet })
   const css = optimize(tailwind.build([candidate]), { minify: true })
     .code.replace(/\/\*! tailwindcss[^*]*\*\//g, '')
     .replace(/:root,:host\{[^{}]*\}/g, '')
@@ -56,7 +54,9 @@ for (const candidate of [...candidates].sort()) {
   entries.push({ candidate, css })
 }
 
-const designSystem = await __unstable__loadDesignSystem(tailwindInput)
+const designSystem = await __unstable__loadDesignSystem(tailwindInput, {
+  loadStylesheet: loadTailwindStylesheet,
+})
 const sortRanks = new Map()
 for (const [candidate, order] of designSystem.getClassOrder(valid)) {
   if (order !== null) sortRanks.set(candidate, order.toString())

@@ -1,17 +1,14 @@
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { compile } from 'tailwindcss'
 import { optimize } from '@tailwindcss/node'
 import { spawnFile } from './process.mjs'
+import { loadTailwindStylesheet } from './tailwind-stylesheet-loader.mjs'
 
 const casesPath = process.env.CALMCSS_UTILITY_CASES ?? 'test/utility_cases.json'
 const cases = JSON.parse(await readFile(casesPath, 'utf8'))
 const maxDiffs = Number.parseInt(process.env.CALMCSS_PARITY_DIFFS ?? '20', 10)
-const themeCss = await readFile(fileURLToPath(import.meta.resolve('tailwindcss/theme.css')), 'utf8')
-const preflightCss = await readFile(fileURLToPath(import.meta.resolve('tailwindcss/preflight.css')), 'utf8')
-
 await spawnFile('zig', ['build'], { stdio: 'inherit' })
 
 const dir = await mkdtemp(join(tmpdir(), 'calmcss-utility-parity-'))
@@ -28,7 +25,7 @@ try {
       throw new Error(`utility parity case "${testCase.name}" must define css`)
     }
 
-    const tailwind = await compile(testCase.css, { loadStylesheet })
+    const tailwind = await compile(testCase.css, { loadStylesheet: loadTailwindStylesheet })
     const expected = normalizeCss(optimize(tailwind.build(testCase.candidates), { minify: true }).code)
     const inputPath = join(dir, `${safeName(testCase.name)}.html`)
     const html = `<div class="${testCase.candidates.join(' ')}"></div>`
@@ -84,24 +81,4 @@ function normalizeCss(css) {
 
 function safeName(name) {
   return name.replace(/[^a-zA-Z0-9_-]+/g, '_')
-}
-
-async function loadStylesheet(id, base) {
-  if (id === 'tailwindcss/utilities') {
-    return { base, content: '@tailwind utilities;' }
-  }
-  if (id === 'tailwindcss/preflight' || id === 'tailwindcss/preflight.css') {
-    return { base, content: preflightCss }
-  }
-  if (id === 'tailwindcss/theme' || id === 'tailwindcss/theme.css') {
-    return { base, content: themeCss }
-  }
-  if (id === 'tailwindcss') {
-    return {
-      base,
-      content:
-        '@import "tailwindcss/theme" layer(theme);@import "tailwindcss/preflight" layer(base);@import "tailwindcss/utilities" layer(utilities);',
-    }
-  }
-  throw new Error(`Unsupported stylesheet import in utility parity: ${id}`)
 }

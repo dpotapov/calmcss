@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process'
 import { compile } from 'tailwindcss'
 import { optimize } from '@tailwindcss/node'
 import { spawnFile } from './process.mjs'
+import { loadTailwindStylesheet } from './tailwind-stylesheet-loader.mjs'
 
 const tailwindSrcRoot = process.env.CALMCSS_TAILWIND_SRC_ROOT
 const defaultFiles = tailwindSrcRoot
@@ -52,7 +53,7 @@ try {
   for (const [index, testCase] of selected.entries()) {
     let expected
     try {
-      const tailwind = await compile(testCase.css)
+      const tailwind = await compile(testCase.css, { loadStylesheet: loadTailwindStylesheet })
       expected = normalizeCss(optimize(tailwind.build(testCase.candidates), { minify: true }).code)
     } catch {
       skip += 1
