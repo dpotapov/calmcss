@@ -136,8 +136,10 @@ const Compiler = struct {
     }
 
     fn collectContent(self: *Compiler, content: []const u8) !void {
+        const css_mode = looksLikeCssChunk(content);
         var i: usize = 0;
         while (i < content.len) {
+            if (css_mode and skipCssCommentOrStringAt(content, &i)) continue;
             if (styleBlockEndAt(content, i)) |end| {
                 i = end;
                 continue;
@@ -166,7 +168,11 @@ const Compiler = struct {
                 i = definitionEnd(content, i) orelse (i + "@source".len);
                 continue;
             }
-            while (i < content.len and !isTokenChar(content[i])) : (i += 1) {}
+            while (i < content.len) {
+                if (css_mode and skipCssCommentOrStringAt(content, &i)) continue;
+                if (isTokenChar(content[i])) break;
+                i += 1;
+            }
             if (styleBlockEndAt(content, i)) |end| {
                 i = end;
                 continue;
@@ -217,8 +223,7 @@ const Compiler = struct {
 
     fn collectSourceDirectives(self: *Compiler, content: []const u8) !void {
         var search_start: usize = 0;
-        while (std.mem.indexOf(u8, content[search_start..], "@source")) |rel| {
-            const at = search_start + rel;
+        while (findCssAtRule(content, &search_start, "@source")) |at| {
             if (!isSourceAtRuleAt(content, at)) {
                 search_start = at + "@source".len;
                 continue;
@@ -305,8 +310,7 @@ const Compiler = struct {
 
     fn collectBuiltinThemeImports(self: *Compiler, content: []const u8) !void {
         var search_start: usize = 0;
-        while (std.mem.indexOf(u8, content[search_start..], "@import")) |rel| {
-            const at = search_start + rel;
+        while (findCssAtRule(content, &search_start, "@import")) |at| {
             const end = definitionEnd(content, at) orelse break;
             if (isTailwindImportAt(content, at)) {
                 const statement = content[at..end];
@@ -328,8 +332,7 @@ const Compiler = struct {
         }
 
         search_start = 0;
-        while (std.mem.indexOf(u8, content[search_start..], "@reference")) |rel| {
-            const at = search_start + rel;
+        while (findCssAtRule(content, &search_start, "@reference")) |at| {
             const end = definitionEnd(content, at) orelse break;
             if (isThemeReferenceAt(content, at) or isTailwindReferenceAt(content, at)) {
                 const statement = content[at..end];
@@ -436,21 +439,25 @@ const Compiler = struct {
 
     fn collectThemeVariables(self: *Compiler, content: []const u8) !void {
         var search_start: usize = 0;
-        while (std.mem.indexOf(u8, content[search_start..], "@theme")) |rel| {
-            const at = search_start + rel;
+        while (findCssAtRule(content, &search_start, "@theme")) |at| {
             const params_start = at + "@theme".len;
             if (params_start < content.len and isNameChar(content[params_start])) {
                 search_start = params_start;
                 continue;
             }
             const end = definitionEnd(content, at) orelse break;
-            const open_rel = std.mem.indexOfScalar(u8, content[params_start..end], '{') orelse {
+            const open = findCssBlockOpen(content, params_start) orelse {
                 const params = trimAscii(content[params_start .. end - 1]);
                 self.collectThemePrefix(params);
                 search_start = end;
                 continue;
             };
-            const open = params_start + open_rel;
+            if (open >= end) {
+                const params = trimAscii(content[params_start .. end - 1]);
+                self.collectThemePrefix(params);
+                search_start = end;
+                continue;
+            }
             if (end <= open + 1) {
                 search_start = end;
                 continue;
@@ -564,19 +571,21 @@ const Compiler = struct {
 
     fn collectThemeKeyframes(self: *Compiler, body: []const u8, reference_theme: bool, static_theme: bool, default_theme: bool) !void {
         var search_start: usize = 0;
-        while (std.mem.indexOf(u8, body[search_start..], "@keyframes")) |rel| {
-            const at = search_start + rel;
+        while (findCssAtRule(body, &search_start, "@keyframes")) |at| {
             const name_start = at + "@keyframes".len;
             if (name_start < body.len and isNameChar(body[name_start])) {
                 search_start = name_start;
                 continue;
             }
             const end = scanCssBlock(body, at) orelse break;
-            const open_rel = std.mem.indexOfScalar(u8, body[at..end], '{') orelse {
+            const open = findCssBlockOpen(body, at) orelse {
                 search_start = end;
                 continue;
             };
-            const open = at + open_rel;
+            if (open >= end) {
+                search_start = end;
+                continue;
+            }
             const name = trimAscii(body[name_start..open]);
             if (name.len > 0) try self.putThemeKeyframes(name, body[at..end], reference_theme, static_theme, default_theme);
             search_start = end;
@@ -718,8 +727,7 @@ const Compiler = struct {
 
     fn collectCustomMedia(self: *Compiler, content: []const u8) !void {
         var search_start: usize = 0;
-        while (std.mem.indexOf(u8, content[search_start..], "@custom-media")) |rel| {
-            const at = search_start + rel;
+        while (findCssAtRule(content, &search_start, "@custom-media")) |at| {
             if (!isCustomMediaAtRuleAt(content, at)) {
                 search_start = at + "@custom-media".len;
                 continue;
@@ -774,16 +782,18 @@ const Compiler = struct {
 
     fn collectCustomUtilities(self: *Compiler, content: []const u8) !void {
         var search_start: usize = 0;
-        while (std.mem.indexOf(u8, content[search_start..], "@utility")) |rel| {
-            const at = search_start + rel;
+        while (findCssAtRule(content, &search_start, "@utility")) |at| {
             const params_start = at + "@utility".len;
             if (params_start < content.len and isNameChar(content[params_start])) {
                 search_start = params_start;
                 continue;
             }
-            const open_rel = std.mem.indexOfScalar(u8, content[params_start..], '{') orelse break;
-            const open = params_start + open_rel;
+            const open = findCssBlockOpen(content, params_start) orelse break;
             const end = scanCssBlock(content, at) orelse break;
+            if (open >= end) {
+                search_start = end;
+                continue;
+            }
             if (end <= open + 1) {
                 search_start = end;
                 continue;
@@ -814,8 +824,7 @@ const Compiler = struct {
 
     fn collectCustomVariants(self: *Compiler, content: []const u8) !void {
         var search_start: usize = 0;
-        while (std.mem.indexOf(u8, content[search_start..], "@custom-variant")) |rel| {
-            const at = search_start + rel;
+        while (findCssAtRule(content, &search_start, "@custom-variant")) |at| {
             const params_start = at + "@custom-variant".len;
             if (params_start < content.len and isNameChar(content[params_start])) {
                 search_start = params_start;
@@ -824,11 +833,14 @@ const Compiler = struct {
             const end = definitionEnd(content, at) orelse break;
             if (scanCssBlock(content, at)) |block_end| {
                 if (block_end == end) {
-                    const open = std.mem.indexOfScalar(u8, content[params_start..end], '{') orelse {
+                    const open_abs = findCssBlockOpen(content, params_start) orelse {
                         search_start = end;
                         continue;
                     };
-                    const open_abs = params_start + open;
+                    if (open_abs >= end) {
+                        search_start = end;
+                        continue;
+                    }
                     const name = trimAscii(content[params_start..open_abs]);
                     const body = trimAscii(content[open_abs + 1 .. end - 1]);
                     try self.collectBodyCustomVariant(name, body);
@@ -877,8 +889,7 @@ const Compiler = struct {
 
     fn collectLegacyVariantDefinitions(self: *Compiler, content: []const u8) !void {
         var search_start: usize = 0;
-        while (std.mem.indexOf(u8, content[search_start..], "@variant")) |rel| {
-            const at = search_start + rel;
+        while (findCssAtRule(content, &search_start, "@variant")) |at| {
             const params_start = at + "@variant".len;
             if (params_start < content.len and isNameChar(content[params_start])) {
                 search_start = params_start;
@@ -891,11 +902,14 @@ const Compiler = struct {
             const end = definitionEnd(content, at) orelse break;
             if (scanCssBlock(content, at)) |block_end| {
                 if (block_end == end) {
-                    const open = std.mem.indexOfScalar(u8, content[params_start..end], '{') orelse {
+                    const open_abs = findCssBlockOpen(content, params_start) orelse {
                         search_start = end;
                         continue;
                     };
-                    const open_abs = params_start + open;
+                    if (open_abs >= end) {
+                        search_start = end;
+                        continue;
+                    }
                     const name = trimAscii(content[params_start..open_abs]);
                     const body = trimAscii(content[open_abs + 1 .. end - 1]);
                     if (customVariantBodyHasSelectorSlot(body)) {
@@ -936,8 +950,7 @@ const Compiler = struct {
     fn utilitiesEntrypointIsImportant(self: *Compiler) bool {
         for (self.authored_css_blocks.items) |css| {
             var search_start: usize = 0;
-            while (std.mem.indexOf(u8, css[search_start..], "@import")) |rel| {
-                const at = search_start + rel;
+            while (findCssAtRule(css, &search_start, "@import")) |at| {
                 const end = definitionEnd(css, at) orelse break;
                 if (isUtilitiesImportAt(css, at) and statementHasImportant(css[at..end])) return true;
                 search_start = end;
@@ -1537,10 +1550,10 @@ fn isKeyframesPrelude(prelude: []const u8) bool {
 }
 
 fn scanCssBlock(css: []const u8, start: usize) ?usize {
-    const open_rel = std.mem.indexOfScalar(u8, css[start..], '{') orelse return null;
-    var i = start + open_rel;
+    var i = findCssBlockOpen(css, start) orelse return null;
     var depth: usize = 0;
-    while (i < css.len) : (i += 1) {
+    while (i < css.len) {
+        if (skipCssCommentOrStringAt(css, &i)) continue;
         switch (css[i]) {
             '{' => depth += 1,
             '}' => {
@@ -1550,8 +1563,38 @@ fn scanCssBlock(css: []const u8, start: usize) ?usize {
             },
             else => {},
         }
+        i += 1;
     }
     return null;
+}
+
+fn findCssBlockOpen(css: []const u8, start: usize) ?usize {
+    var i = start;
+    while (i < css.len) {
+        if (skipCssCommentOrStringAt(css, &i)) continue;
+        if (css[i] == '{') return i;
+        i += 1;
+    }
+    return null;
+}
+
+fn findCssAtRule(input: []const u8, search_start: *usize, name: []const u8) ?usize {
+    var i = search_start.*;
+    while (i < input.len) {
+        if (skipCssCommentOrStringAt(input, &i)) continue;
+        if (std.mem.startsWith(u8, input[i..], name)) {
+            search_start.* = i;
+            return i;
+        }
+        i += 1;
+    }
+    search_start.* = input.len;
+    return null;
+}
+
+fn containsCssAtRule(input: []const u8, name: []const u8) bool {
+    var search_start: usize = 0;
+    return findCssAtRule(input, &search_start, name) != null;
 }
 
 fn trimAscii(input: []const u8) []const u8 {
@@ -1764,8 +1807,7 @@ fn sourceInlineArgument(statement: []const u8) ?[]const u8 {
 fn mediaThemeParamsCovering(input: []const u8, index: usize) ?[]const u8 {
     var search_start: usize = 0;
     var found: ?[]const u8 = null;
-    while (std.mem.indexOf(u8, input[search_start..], "@media")) |rel| {
-        const at = search_start + rel;
+    while (findCssAtRule(input, &search_start, "@media")) |at| {
         if (at > index) break;
         const name_end = at + "@media".len;
         if (name_end < input.len and isNameChar(input[name_end])) {
@@ -1777,11 +1819,15 @@ fn mediaThemeParamsCovering(input: []const u8, index: usize) ?[]const u8 {
             continue;
         };
         if (index >= at and index < end) {
-            const open_rel = std.mem.indexOfScalar(u8, input[at..end], '{') orelse {
+            const open = findCssBlockOpen(input, at) orelse {
                 search_start = name_end;
                 continue;
             };
-            const prelude = input[at .. at + open_rel];
+            if (open >= end) {
+                search_start = name_end;
+                continue;
+            }
+            const prelude = input[at..open];
             if (mediaThemeParams(prelude)) |params| found = params;
             search_start = name_end;
         } else {
@@ -1890,7 +1936,8 @@ fn definitionEnd(input: []const u8, start: usize) ?usize {
     const block_end = scanCssBlock(input, start);
     var i = start;
     var paren_depth: usize = 0;
-    while (i < input.len) : (i += 1) {
+    while (i < input.len) {
+        if (skipCssCommentOrStringAt(input, &i)) continue;
         switch (input[i]) {
             '(' => paren_depth += 1,
             ')' => if (paren_depth > 0) {
@@ -1900,6 +1947,7 @@ fn definitionEnd(input: []const u8, start: usize) ?usize {
             '{' => if (paren_depth == 0) return block_end,
             else => {},
         }
+        i += 1;
     }
     return block_end;
 }
@@ -1914,15 +1962,15 @@ fn styleBlockEndAt(input: []const u8, index: usize) ?usize {
 
 fn looksLikeCssChunk(content: []const u8) bool {
     if (std.mem.indexOfScalar(u8, content, '<') != null) return false;
-    if (std.mem.indexOf(u8, content, "@import") != null) return true;
-    if (std.mem.indexOf(u8, content, "@reference") != null) return true;
+    if (containsCssAtRule(content, "@import")) return true;
+    if (containsCssAtRule(content, "@reference")) return true;
     return std.mem.indexOfScalar(u8, content, '{') != null and
-        (std.mem.indexOf(u8, content, "@tailwind") != null or
-            std.mem.indexOf(u8, content, "@theme") != null or
-            std.mem.indexOf(u8, content, "@utility") != null or
-            std.mem.indexOf(u8, content, "@custom-variant") != null or
-            std.mem.indexOf(u8, content, "@custom-media") != null or
-            std.mem.indexOf(u8, content, "@variant") != null);
+        (containsCssAtRule(content, "@tailwind") or
+            containsCssAtRule(content, "@theme") or
+            containsCssAtRule(content, "@utility") or
+            containsCssAtRule(content, "@custom-variant") or
+            containsCssAtRule(content, "@custom-media") or
+            containsCssAtRule(content, "@variant"));
 }
 
 fn appendAuthoredCss(
@@ -2368,8 +2416,7 @@ fn appendFullTailwindImport(
 
 fn appendApplyReferencesFromCss(compiler: *Compiler, out: *std.ArrayList(u8), css: []const u8) !void {
     var search_start: usize = 0;
-    while (std.mem.indexOf(u8, css[search_start..], "@apply")) |rel| {
-        const at = search_start + rel;
+    while (findCssAtRule(css, &search_start, "@apply")) |at| {
         const params_start = at + "@apply".len;
         if (params_start < css.len and isNameChar(css[params_start])) {
             search_start = params_start;
@@ -4479,14 +4526,42 @@ fn skipCssWhitespaceAndComments(input: []const u8, index: *usize) void {
             index.* += 1;
             continue;
         }
-        if (index.* + 1 < input.len and input[index.*] == '/' and input[index.* + 1] == '*') {
-            index.* += 2;
-            while (index.* + 1 < input.len and !(input[index.*] == '*' and input[index.* + 1] == '/')) : (index.* += 1) {}
-            if (index.* + 1 < input.len) index.* += 2;
-            continue;
-        }
+        if (skipCssCommentAt(input, index)) continue;
         break;
     }
+}
+
+fn skipCssCommentOrStringAt(input: []const u8, index: *usize) bool {
+    return skipCssCommentAt(input, index) or skipCssStringAt(input, index);
+}
+
+fn skipCssCommentAt(input: []const u8, index: *usize) bool {
+    if (index.* + 1 >= input.len or input[index.*] != '/' or input[index.* + 1] != '*') return false;
+    index.* += 2;
+    while (index.* + 1 < input.len and !(input[index.*] == '*' and input[index.* + 1] == '/')) : (index.* += 1) {}
+    if (index.* + 1 < input.len) {
+        index.* += 2;
+    } else {
+        index.* = input.len;
+    }
+    return true;
+}
+
+fn skipCssStringAt(input: []const u8, index: *usize) bool {
+    if (index.* >= input.len or (input[index.*] != '"' and input[index.*] != '\'')) return false;
+    const quote = input[index.*];
+    index.* += 1;
+    while (index.* < input.len) : (index.* += 1) {
+        if (input[index.*] == '\\') {
+            if (index.* + 1 < input.len) index.* += 1;
+            continue;
+        }
+        if (input[index.*] == quote) {
+            index.* += 1;
+            return true;
+        }
+    }
+    return true;
 }
 
 fn shouldEmitThemeVariableDirect(compiler: *Compiler, variable: ThemeVariable, body: []const u8) bool {
@@ -8540,6 +8615,7 @@ fn themeBaseMatches(compiler: *Compiler, base: []const u8) bool {
         if (hasThemeValue(compiler, "--text-", suffix)) return true;
         if (hasThemeValue(compiler, "--text-color-", suffix)) return true;
     }
+    if (std.mem.startsWith(u8, name, "bg-") and hasThemeValue(compiler, "--background-image-", name["bg-".len..])) return true;
     if (std.mem.startsWith(u8, name, "indent-") and hasThemeValue(compiler, "--text-indent-", name["indent-".len..])) return true;
     if (std.mem.startsWith(u8, name, "underline-offset-") and hasThemeValue(compiler, "--text-underline-offset-", name["underline-offset-".len..])) return true;
     if (std.mem.startsWith(u8, name, "decoration-") and hasThemeValue(compiler, "--text-decoration-thickness-", name["decoration-".len..])) return true;
@@ -8864,24 +8940,12 @@ fn renderTypedPropertyUtility(compiler: *Compiler, out: *std.ArrayList(u8), raw:
         try appendShadowProperties(allocator, out);
         return true;
     }
-    if (std.mem.startsWith(u8, parsed.base, "translate-x-")) {
-        const suffix = parsed.base["translate-x-".len..];
+    if (translateAxisCandidate(parsed.base)) |translate_axis| {
         var value_buf: [128]u8 = undefined;
-        const value = resolveScaleValue(&value_buf, suffix, false, false) orelse return false;
+        const value = resolveTranslateValue(&value_buf, translate_axis.suffix, translate_axis.negative) orelse return false;
         try appendPropertyLayer(allocator, out, "--tw-translate-x:0;--tw-translate-y:0;--tw-translate-z:0;");
         var decls: [256]u8 = undefined;
-        const css = try std.fmt.bufPrint(&decls, "--tw-translate-x:{s};translate:var(--tw-translate-x) var(--tw-translate-y);", .{value});
-        try writeRule(allocator, out, raw, parsed.variants, "", css);
-        try appendTranslateProperties(allocator, out);
-        return true;
-    }
-    if (std.mem.startsWith(u8, parsed.base, "-translate-y-")) {
-        const suffix = parsed.base["-translate-y-".len..];
-        var value_buf: [128]u8 = undefined;
-        const value = resolveScaleValue(&value_buf, suffix, true, false) orelse return false;
-        try appendPropertyLayer(allocator, out, "--tw-translate-x:0;--tw-translate-y:0;--tw-translate-z:0;");
-        var decls: [256]u8 = undefined;
-        const css = try std.fmt.bufPrint(&decls, "--tw-translate-y:{s};translate:var(--tw-translate-x) var(--tw-translate-y);", .{value});
+        const css = try std.fmt.bufPrint(&decls, "{s}:{s};translate:var(--tw-translate-x) var(--tw-translate-y);", .{ translate_axis.prop, value });
         try writeRule(allocator, out, raw, parsed.variants, "", css);
         try appendTranslateProperties(allocator, out);
         return true;
@@ -8961,6 +9025,31 @@ const ScaleCandidate = struct {
     axis: ?[]const u8,
     negative: bool,
 };
+
+const TranslateAxisCandidate = struct {
+    suffix: []const u8,
+    prop: []const u8,
+    negative: bool,
+};
+
+fn translateAxisCandidate(base: []const u8) ?TranslateAxisCandidate {
+    const prefixes = [_]struct { prefix: []const u8, prop: []const u8, negative: bool }{
+        .{ .prefix = "-translate-x-", .prop = "--tw-translate-x", .negative = true },
+        .{ .prefix = "-translate-y-", .prop = "--tw-translate-y", .negative = true },
+        .{ .prefix = "translate-x-", .prop = "--tw-translate-x", .negative = false },
+        .{ .prefix = "translate-y-", .prop = "--tw-translate-y", .negative = false },
+    };
+    inline for (prefixes) |entry| {
+        if (std.mem.startsWith(u8, base, entry.prefix)) {
+            return .{
+                .suffix = base[entry.prefix.len..],
+                .prop = entry.prop,
+                .negative = entry.negative,
+            };
+        }
+    }
+    return null;
+}
 
 fn scaleCandidate(base: []const u8) ?ScaleCandidate {
     const prefixes = [_]struct { prefix: []const u8, axis: ?[]const u8, negative: bool }{
@@ -11169,6 +11258,7 @@ fn emitThemeUtility(
     if (try emitThemeGrid(compiler, out, base, important)) return true;
     if (try emitThemeLineClamp(compiler, out, base, important)) return true;
     if (try emitThemeMappedFunctional(compiler, out, base, important)) return true;
+    if (try emitThemeBackgroundImage(compiler, out, base, important)) return true;
     if (try emitThemeColor(compiler, out, base, important)) return true;
     if (try emitThemeAnimation(compiler, out, base, important)) return true;
     return false;
@@ -11629,6 +11719,16 @@ fn emitThemeColor(compiler: *Compiler, out: *std.ArrayList(u8), base: []const u8
         }
     }
     return false;
+}
+
+fn emitThemeBackgroundImage(compiler: *Compiler, out: *std.ArrayList(u8), base: []const u8, important: bool) !bool {
+    if (!std.mem.startsWith(u8, base, "bg-")) return false;
+    const suffix = base["bg-".len..];
+    if (std.mem.indexOfScalar(u8, suffix, '/')) |_| return false;
+    var value_buf: [1024]u8 = undefined;
+    const value = resolveThemeValue(compiler, &value_buf, "--background-image-", suffix) orelse return false;
+    try appendDecl(compiler.allocator, out, "background-image", value, important);
+    return true;
 }
 
 fn colorThemeNamespaceForPrefix(prefix: []const u8) ?[]const u8 {
@@ -12559,7 +12659,7 @@ fn emitTransformUtility(allocator: std.mem.Allocator, out: *std.ArrayList(u8), b
             } else if (std.mem.startsWith(u8, entry.prefix, "scale")) {
                 value = if (arbitraryValue(&buf, suffix)) |v| v else try std.fmt.bufPrint(&buf, "{d}", .{(@as(f64, @floatFromInt(parsePositiveInt(suffix) orelse return false)) / 100.0)});
             } else {
-                value = resolveScaleValue(&buf, suffix, negative, false) orelse return false;
+                value = resolveTranslateValue(&buf, suffix, negative) orelse return false;
             }
             try appendDecl(allocator, out, entry.prop, value, important);
             if (std.mem.eql(u8, entry.prefix, "scale-")) {
@@ -12589,6 +12689,21 @@ fn resolveScaleValue(buf: []u8, suffix: []const u8, negative: bool, allow_auto: 
         return std.fmt.bufPrint(buf, "calc(var(--spacing)*{s})", .{factor}) catch null;
     }
     return null;
+}
+
+fn resolveTranslateValue(buf: []u8, suffix: []const u8, negative: bool) ?[]const u8 {
+    if (std.mem.eql(u8, suffix, "full")) return if (negative) "-100%" else "100%";
+    if (translateFractionPercent(buf, suffix, negative)) |value| return value;
+    return resolveScaleValue(buf, suffix, negative, false);
+}
+
+fn translateFractionPercent(buf: []u8, suffix: []const u8, negative: bool) ?[]const u8 {
+    const slash = std.mem.indexOfScalar(u8, suffix, '/') orelse return null;
+    const a = parsePositiveInt(suffix[0..slash]) orelse return null;
+    const b = parsePositiveInt(suffix[slash + 1 ..]) orelse return null;
+    if (b == 0) return null;
+    if (negative) return std.fmt.bufPrint(buf, "calc(calc({d} / {d} * 100%) * -1)", .{ a, b }) catch null;
+    return std.fmt.bufPrint(buf, "calc({d} / {d} * 100%)", .{ a, b }) catch null;
 }
 
 fn scaleFactor(buf: []u8, suffix: []const u8, negative: bool) ?[]const u8 {
@@ -12903,4 +13018,121 @@ test "forms and typography plugin classes" {
     try std.testing.expect(std.mem.indexOf(u8, css, ".form-input{appearance:none;--tw-shadow:0 0 #0000;") != null);
     try std.testing.expect(std.mem.indexOf(u8, css, ".prose{color:var(--tw-prose-body);max-width:65ch}") != null);
     try std.testing.expect(std.mem.indexOf(u8, css, ".prose-invert{--tw-prose-body:var(--tw-prose-invert-body);") != null);
+}
+
+test "forms plugin template refs stay out of typography entries" {
+    const template_ref_mask: u32 = 0x80000000;
+    for (plugin_parity_data.entries) |entry| {
+        const name = plugin_parity_data.candidate(entry);
+        var has_template_ref = false;
+        const end = entry.part_start + entry.part_len;
+        for (plugin_parity_data.part_refs[entry.part_start..end]) |part_ref| {
+            if ((part_ref & template_ref_mask) != 0) has_template_ref = true;
+        }
+
+        if (std.mem.startsWith(u8, name, "form-")) {
+            try std.testing.expect(has_template_ref);
+        } else if (std.mem.eql(u8, name, "prose") or std.mem.startsWith(u8, name, "prose-")) {
+            try std.testing.expect(!has_template_ref);
+        }
+    }
+}
+
+test "typography plugin classes do not emit forms base template" {
+    const css = try compileAlloc(std.testing.allocator, &.{.{ .name = "plugins.html", .content = "<article class=\"prose\"></article>" }}, .{});
+    defer std.testing.allocator.free(css);
+    try std.testing.expect(std.mem.indexOf(u8, css, ".prose{color:var(--tw-prose-body);max-width:65ch}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, css, "@layer base{input:where([type=text])") == null);
+}
+
+test "CSS candidate scan ignores comments and string literals" {
+    const input =
+        \\@theme { /* } text-red-500 underline */ --color-brand:#123456; --font-display:"font-bold } bg-red-500"; }
+        \\@source inline("text-brand");
+        \\@tailwind utilities;
+        \\.foo::before { content:"bg-blue-500 flex"; }
+        \\/* p-4 */
+    ;
+    const css = try compileAlloc(std.testing.allocator, &.{.{ .name = "app.css", .content = input }}, .{});
+    defer std.testing.allocator.free(css);
+
+    try std.testing.expect(std.mem.indexOf(u8, css, ".text-brand{color:var(--color-brand);}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, css, ".foo::before{content:\"bg-blue-500 flex\";}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, css, ".text-red-500{") == null);
+    try std.testing.expect(std.mem.indexOf(u8, css, ".underline{") == null);
+    try std.testing.expect(std.mem.indexOf(u8, css, ".font-bold{") == null);
+    try std.testing.expect(std.mem.indexOf(u8, css, ".bg-red-500{") == null);
+    try std.testing.expect(std.mem.indexOf(u8, css, ".bg-blue-500{") == null);
+    try std.testing.expect(std.mem.indexOf(u8, css, ".flex{") == null);
+    try std.testing.expect(std.mem.indexOf(u8, css, ".p-4{") == null);
+}
+
+test "tailwind full import uses v4 defaults" {
+    const input =
+        \\<style>@import "tailwindcss";</style>
+        \\<div class="border ring space-x-2 bg-red-500/50"></div>
+    ;
+    const css = try compileAlloc(std.testing.allocator, &.{.{ .name = "app.html", .content = input }}, .{});
+    defer std.testing.allocator.free(css);
+
+    try std.testing.expect(std.mem.indexOf(u8, css, "@layer theme{") != null);
+    try std.testing.expect(std.mem.indexOf(u8, css, "@layer base{") != null);
+    try std.testing.expect(std.mem.indexOf(u8, css, "@layer utilities{") != null);
+    try std.testing.expect(std.mem.indexOf(u8, css, ".border{border-style:var(--tw-border-style);border-width:1px}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, css, ".ring{--tw-ring-shadow:var(--tw-ring-inset,) 0 0 0 calc(1px + var(--tw-ring-offset-width)) var(--tw-ring-color,currentcolor);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, css, ":where(.space-x-2>:not(:last-child))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, css, "color-mix(in oklab, var(--color-red-500) 50%, transparent)") != null);
+}
+
+test "tailwind import scanner ignores comments and strings" {
+    const input =
+        \\/*
+        \\ * The single @import "tailwindcss" directive pulls in defaults.
+        \\ */
+        \\.note::before { content: "@import \"tailwindcss\""; }
+        \\@import "tailwindcss";
+        \\@theme { --color-red-500: #FF3131; }
+        \\@source inline("text-red-500 p-4");
+    ;
+    const css = try compileAlloc(std.testing.allocator, &.{.{ .name = "calm-theme.css", .content = input }}, .{});
+    defer std.testing.allocator.free(css);
+
+    try std.testing.expect(std.mem.indexOf(u8, css, "@layer theme{") != null);
+    try std.testing.expect(std.mem.indexOf(u8, css, "--spacing:.25rem") != null);
+    try std.testing.expect(std.mem.indexOf(u8, css, "--color-red-500:#FF3131") != null);
+    try std.testing.expect(std.mem.indexOf(u8, css, ".p-4{padding:calc(var(--spacing) * 4)}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, css, ".text-red-500{color:var(--color-red-500);}") != null);
+}
+
+test "v3 opacity utilities do not emit while slash opacity does" {
+    const input =
+        \\<div class="bg-opacity-50 text-opacity-50 border-opacity-50 placeholder-opacity-50 divide-opacity-50 ring-opacity-50 bg-red-500/50 text-red-500/50 border-red-500/50"></div>
+    ;
+    const css = try compileAlloc(std.testing.allocator, &.{.{ .name = "index.html", .content = input }}, .{});
+    defer std.testing.allocator.free(css);
+
+    try std.testing.expect(std.mem.indexOf(u8, css, ".bg-opacity-50{") == null);
+    try std.testing.expect(std.mem.indexOf(u8, css, ".text-opacity-50{") == null);
+    try std.testing.expect(std.mem.indexOf(u8, css, ".border-opacity-50{") == null);
+    try std.testing.expect(std.mem.indexOf(u8, css, ".placeholder-opacity-50{") == null);
+    try std.testing.expect(std.mem.indexOf(u8, css, ".divide-opacity-50{") == null);
+    try std.testing.expect(std.mem.indexOf(u8, css, ".ring-opacity-50{") == null);
+    try std.testing.expect(std.mem.indexOf(u8, css, ".bg-red-500\\/50{") != null);
+    try std.testing.expect(std.mem.indexOf(u8, css, ".text-red-500\\/50{") != null);
+    try std.testing.expect(std.mem.indexOf(u8, css, ".border-red-500\\/50{") != null);
+}
+
+test "fractional translate axis utilities" {
+    const input =
+        \\<div class="translate-x-1/2 -translate-x-1/2 translate-y-1/2 -translate-y-1/2 m-1/2 p-1/2"></div>
+    ;
+    const css = try compileAlloc(std.testing.allocator, &.{.{ .name = "index.html", .content = input }}, .{});
+    defer std.testing.allocator.free(css);
+
+    try std.testing.expect(std.mem.indexOf(u8, css, ".translate-x-1\\/2{--tw-translate-x:calc(1 / 2 * 100%);translate:var(--tw-translate-x) var(--tw-translate-y);}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, css, ".-translate-x-1\\/2{--tw-translate-x:calc(calc(1 / 2 * 100%) * -1);translate:var(--tw-translate-x) var(--tw-translate-y);}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, css, ".translate-y-1\\/2{--tw-translate-y:calc(1 / 2 * 100%);translate:var(--tw-translate-x) var(--tw-translate-y);}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, css, ".-translate-y-1\\/2{--tw-translate-y:calc(calc(1 / 2 * 100%) * -1);translate:var(--tw-translate-x) var(--tw-translate-y);}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, css, ".m-1\\/2{") == null);
+    try std.testing.expect(std.mem.indexOf(u8, css, ".p-1\\/2{") == null);
 }

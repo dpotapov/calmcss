@@ -56,6 +56,11 @@
     "candidates": ["text-title", "leading-tall", "tracking-wideish"]
   },
   {
+    "name": "custom background image theme token",
+    "css": "@theme { --background-image-gradient-text:linear-gradient(276deg,#ff008f,#4d3384); } @tailwind utilities;",
+    "candidates": ["bg-gradient-text", "hover:bg-gradient-text"]
+  },
+  {
     "name": "empty theme layers are removed",
     "css": "@layer theme1 { @layer theme2 { @theme { --color-tomato:#e10c04; --color-potato:#ac855b; } } } @tailwind utilities;",
     "candidates": ["underline"]
