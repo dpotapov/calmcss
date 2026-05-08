@@ -266,7 +266,7 @@ server-startup cycle: create a compiler, feed every content file via
 `PutChunk`, and call `Render` once. This mirrors what a server does on
 startup when it scans its template tree to build the initial CSS bundle.
 
-Run against the orc-server `web/` tree (120 chunks, ~1 MB total) on
+Run against a real-world web template tree (120 chunks, ~1 MB total) on
 Apple M3 Pro:
 
 ```
