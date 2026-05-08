@@ -8462,7 +8462,7 @@ fn normalizeTransitionDuration(buf: []u8, value: []const u8) ?[]const u8 {
 }
 
 fn renderThemeSpaceCandidate(compiler: *Compiler, out: *std.ArrayList(u8), raw: []const u8, parsed: ParsedCandidate) !bool {
-    if (parsed.variants.len != 0) return false;
+    if (!themeVariantsAreSupported(compiler, parsed.variants)) return false;
 
     var negative = false;
     var name = parsed.base;
@@ -8476,34 +8476,34 @@ fn renderThemeSpaceCandidate(compiler: *Compiler, out: *std.ArrayList(u8), raw: 
     if (!is_x and !is_y) return false;
     const suffix = name["space-x-".len..];
 
-    var value_buf: [512]u8 = undefined;
-    const value = themeSpacingValue(compiler, &value_buf, suffix, negative) orelse return false;
-
     const variable = if (is_x) "--tw-space-x-reverse" else "--tw-space-y-reverse";
     var layer_buf: [64]u8 = undefined;
     const layer_decls = std.fmt.bufPrint(&layer_buf, "{s}:0;", .{variable}) catch return false;
     try appendPropertyLayer(compiler.allocator, out, layer_decls);
-    var selector: std.ArrayList(u8) = .empty;
-    defer selector.deinit(compiler.allocator);
-    try selector.appendSlice(compiler.allocator, ":where(.");
-    try appendEscaped(compiler.allocator, &selector, raw);
-    try selector.appendSlice(compiler.allocator, ">:not(:last-child))");
 
-    try out.appendSlice(compiler.allocator, selector.items);
-    try out.append(compiler.allocator, '{');
-    try appendDecl(compiler.allocator, out, variable, "0", parsed.important);
-    if (is_x) {
-        try appendSpaceBetweenDecls(compiler, out, value, variable, "margin-inline-start", "margin-inline-end", parsed.important);
-    } else {
-        try appendSpaceBetweenDecls(compiler, out, value, variable, "margin-block-start", "margin-block-end", parsed.important);
-    }
-    try out.append(compiler.allocator, '}');
+    var decls: std.ArrayList(u8) = .empty;
+    defer decls.deinit(compiler.allocator);
 
-    if (is_x) {
-        try out.appendSlice(compiler.allocator, "@property --tw-space-x-reverse{syntax:\"*\";inherits:false;initial-value:0;}");
-    } else {
-        try out.appendSlice(compiler.allocator, "@property --tw-space-y-reverse{syntax:\"*\";inherits:false;initial-value:0;}");
+    if (std.mem.eql(u8, suffix, "reverse")) {
+        if (negative) return false;
+        try appendDecl(compiler.allocator, &decls, variable, "1", parsed.important);
+        try writeSpaceBetweenRule(compiler, out, raw, parsed.variants, decls.items);
+        try appendSpaceBetweenProperty(compiler, out, is_x);
+        return true;
     }
+
+    var value_buf: [512]u8 = undefined;
+    const value = spaceBetweenSpacingValue(compiler, &value_buf, suffix, negative) orelse return false;
+
+    try appendDecl(compiler.allocator, &decls, variable, "0", parsed.important);
+    if (is_x) {
+        try appendSpaceBetweenDecls(compiler, &decls, value, variable, "margin-inline-start", "margin-inline-end", parsed.important);
+    } else {
+        try appendSpaceBetweenDecls(compiler, &decls, value, variable, "margin-block-start", "margin-block-end", parsed.important);
+    }
+    try writeSpaceBetweenRule(compiler, out, raw, parsed.variants, decls.items);
+
+    try appendSpaceBetweenProperty(compiler, out, is_x);
     return true;
 }
 
@@ -8648,6 +8648,60 @@ fn writeDivideChildRule(compiler: *Compiler, out: *std.ArrayList(u8), raw: []con
     try out.append(compiler.allocator, '}');
 }
 
+fn writeSpaceBetweenRule(compiler: *Compiler, out: *std.ArrayList(u8), raw: []const u8, variants: []const []const u8, declarations: []const u8) !void {
+    try openThemeMediaWrappers(compiler, out, variants);
+    try writeSpaceBetweenRuleWithoutMediaWrappers(compiler, out, raw, variants, declarations);
+    try closeThemeMediaWrappers(compiler, out, variants);
+}
+
+fn writeSpaceBetweenRuleWithoutMediaWrappers(compiler: *Compiler, out: *std.ArrayList(u8), raw: []const u8, variants: []const []const u8, declarations: []const u8) !void {
+    var selector: std.ArrayList(u8) = .empty;
+    defer selector.deinit(compiler.allocator);
+    try selector.append(compiler.allocator, '.');
+    try appendEscaped(compiler.allocator, &selector, raw);
+
+    for (variants) |variant| {
+        if (specialPseudoElementVariant(variant) != null) continue;
+        if (pseudoVariant(variant)) |pseudo| {
+            try selector.appendSlice(compiler.allocator, pseudo);
+        } else if (try applyCoreSelectorVariant(compiler.allocator, &selector, compiler.prefix, variant)) {
+            continue;
+        } else if (std.mem.eql(u8, variant, "group-hover")) {
+            try applyGroupPeerHoverSelector(compiler.allocator, &selector, compiler.prefix, false);
+        } else if (std.mem.eql(u8, variant, "peer-hover")) {
+            try applyGroupPeerHoverSelector(compiler.allocator, &selector, compiler.prefix, true);
+        } else if (compoundCustomVariantForName(compiler, variant)) |compound| {
+            try applyCompoundCustomVariantSelector(compiler, &selector, compound);
+        } else if (conditionalCustomVariantForName(compiler, variant)) |conditional| {
+            try applyConditionalCustomVariantSelector(compiler, &selector, conditional);
+        } else if (negatedBodyCustomVariantForName(compiler, variant)) |custom| {
+            if (try applyNegatedBodyCustomVariantSelector(compiler, &selector, custom)) continue;
+        } else if (customVariantForName(compiler, variant)) |custom| {
+            if (custom.body) {
+                if (!customVariantBodyHasAtRules(custom.value)) {
+                    try applyCustomVariantBodySelector(compiler, &selector, custom.value);
+                }
+            } else if (!custom.media) {
+                try applyCustomVariantSelector(compiler.allocator, &selector, custom.value);
+            }
+        }
+    }
+
+    try out.appendSlice(compiler.allocator, ":where(");
+    try out.appendSlice(compiler.allocator, selector.items);
+    try out.appendSlice(compiler.allocator, ">:not(:last-child)){");
+    try out.appendSlice(compiler.allocator, declarations);
+    try out.append(compiler.allocator, '}');
+}
+
+fn appendSpaceBetweenProperty(compiler: *Compiler, out: *std.ArrayList(u8), is_x: bool) !void {
+    if (is_x) {
+        try out.appendSlice(compiler.allocator, "@property --tw-space-x-reverse{syntax:\"*\";inherits:false;initial-value:0;}");
+    } else {
+        try out.appendSlice(compiler.allocator, "@property --tw-space-y-reverse{syntax:\"*\";inherits:false;initial-value:0;}");
+    }
+}
+
 fn appendSpaceBetweenDecls(
     compiler: *Compiler,
     out: *std.ArrayList(u8),
@@ -8663,6 +8717,11 @@ fn appendSpaceBetweenDecls(
     const end_value = try std.fmt.bufPrint(&end_buf, "calc({s} * calc(1 - var({s})))", .{ value, variable });
     try appendDecl(compiler.allocator, out, start_prop, start_value, important);
     try appendDecl(compiler.allocator, out, end_prop, end_value, important);
+}
+
+fn spaceBetweenSpacingValue(compiler: *Compiler, buf: []u8, suffix: []const u8, negative: bool) ?[]const u8 {
+    if (themeSpacingValue(compiler, buf, suffix, negative)) |value| return value;
+    return resolveScaleValue(buf, suffix, negative, false);
 }
 
 fn themeCandidateNeedsCustom(compiler: *Compiler, parsed: ParsedCandidate) bool {
@@ -13099,6 +13158,25 @@ test "chunk update replaces content" {
     const css = try instance.render();
     try std.testing.expect(std.mem.indexOf(u8, css, ".p-6{padding:calc(var(--spacing)*6);}") != null);
     try std.testing.expect(std.mem.indexOf(u8, css, ".p-2{") == null);
+}
+
+test "space between utilities use spacing scale fallback" {
+    const input =
+        \\<div class="space-y-2 space-x-3 -space-y-3 space-y-[12px] hover:space-y-2 md:space-x-reverse"></div>
+    ;
+    const css = try compileAlloc(std.testing.allocator, &.{.{ .name = "index.html", .content = input }}, .{});
+    defer std.testing.allocator.free(css);
+
+    try std.testing.expect(std.mem.indexOf(u8, css, ":where(.space-y-2>:not(:last-child))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, css, "margin-block-end:calc(calc(var(--spacing)*2) * calc(1 - var(--tw-space-y-reverse)))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, css, ":where(.space-x-3>:not(:last-child))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, css, "margin-inline-end:calc(calc(var(--spacing)*3) * calc(1 - var(--tw-space-x-reverse)))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, css, ":where(.-space-y-3>:not(:last-child))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, css, "margin-block-end:calc(calc(var(--spacing)*-3) * calc(1 - var(--tw-space-y-reverse)))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, css, ":where(.space-y-\\[12px\\]>:not(:last-child))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, css, "margin-block-end:calc(12px * calc(1 - var(--tw-space-y-reverse)))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, css, "@media (hover:hover){:where(.hover\\:space-y-2:hover>:not(:last-child))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, css, "@media (min-width:48rem){:where(.md\\:space-x-reverse>:not(:last-child)){--tw-space-x-reverse:1;}}") != null);
 }
 
 test "forms and typography plugin classes" {
