@@ -1,4 +1,4 @@
-module github.com/calmcss/calmcss
+module github.com/dpotapov/calmcss
 
 go 1.24
 
