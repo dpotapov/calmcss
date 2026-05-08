@@ -8,13 +8,11 @@ const Usage =
     \\Usage:
     \\  calmcss -i input.html -o output.css
     \\  calmcss --chunk app.html=app.html --chunk component.html=component.html
-    \\  calmcss --config calmcss.json input.html
     \\
     \\Options:
     \\  -i, --input FILE       Add an input chunk.
     \\  -o, --output FILE      Write CSS to a file instead of stdout.
     \\  --chunk NAME=FILE      Add a named chunk whose content is FILE.
-    \\  --config FILE          Add JSON/YAML config as a chunk; safelist strings are scanned.
     \\  --help                 Show this help.
     \\
 ;
@@ -46,10 +44,6 @@ pub fn main(init: std.process.Init) !void {
             i += 1;
             if (i >= args.len) return error.MissingChunk;
             try addNamedChunk(allocator, io, &chunks, args[i]);
-        } else if (std.mem.eql(u8, arg, "--config")) {
-            i += 1;
-            if (i >= args.len) return error.MissingConfigPath;
-            try addFileChunk(allocator, io, &chunks, args[i], args[i]);
         } else if (std.mem.startsWith(u8, arg, "-")) {
             return error.UnknownArgument;
         } else {

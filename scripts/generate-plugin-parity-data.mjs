@@ -2,15 +2,18 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { compile } from 'tailwindcss'
 import { optimize } from '@tailwindcss/node'
+import { loadTailwindStylesheet, tailwindUtilitiesImport } from './tailwind-stylesheet-loader.mjs'
 
 const candidatesPath = process.argv[2] ?? 'test/plugin_candidates.json'
 const outPath = process.argv[3] ?? 'src/plugin_parity_data.zig'
 const candidates = JSON.parse(await readFile(candidatesPath, 'utf8'))
-const input = '@plugin "@tailwindcss/forms";@plugin "@tailwindcss/typography";@tailwind utilities;'
-
 const entries = []
 for (const candidate of candidates) {
-  const tailwind = await compile(input, { loadModule })
+  const input = pluginInputForCandidate(candidate)
+  const tailwind = await compile(input, {
+    loadModule,
+    loadStylesheet: loadTailwindStylesheet,
+  })
   const css = optimize(tailwind.build([candidate]), { minify: true })
     .code.replace(/\/\*! tailwindcss[^*]*\*\//g, '')
     .trim()
@@ -88,6 +91,16 @@ async function loadModule(id, base, resourceHint) {
   void resourceHint
   const module = await import(id)
   return { path: id, base: '', module: module.default ?? module }
+}
+
+function pluginInputForCandidate(candidate) {
+  if (candidate.startsWith('form-')) {
+    return `@plugin "@tailwindcss/forms";${tailwindUtilitiesImport}`
+  }
+  if (candidate === 'prose' || candidate.startsWith('prose-')) {
+    return `@plugin "@tailwindcss/typography";${tailwindUtilitiesImport}`
+  }
+  throw new Error(`unknown plugin candidate family: ${candidate}`)
 }
 
 function buildBlob(values) {

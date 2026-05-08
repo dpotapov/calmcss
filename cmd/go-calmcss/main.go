@@ -7,7 +7,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/calmcss/calmcss/go/calmnative"
+	"github.com/dpotapov/calmcss/go/calmnative"
 )
 
 func main() {

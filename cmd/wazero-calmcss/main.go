@@ -8,7 +8,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/calmcss/calmcss/go/calmwasm"
+	"github.com/dpotapov/calmcss/go/calmwasm"
 )
 
 func main() {

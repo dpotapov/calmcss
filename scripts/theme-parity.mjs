@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { compile } from 'tailwindcss'
 import { optimize } from '@tailwindcss/node'
 import { spawnFile } from './process.mjs'
+import { loadTailwindStylesheet } from './tailwind-stylesheet-loader.mjs'
 
 const casesPath = process.env.CALMCSS_THEME_CASES ?? 'test/theme_cases.json'
 const cases = JSON.parse(await readFile(casesPath, 'utf8'))
@@ -25,7 +26,7 @@ try {
       throw new Error(`theme parity case "${testCase.name}" must define css`)
     }
 
-    const tailwind = await compile(testCase.css)
+    const tailwind = await compile(testCase.css, { loadStylesheet: loadTailwindStylesheet })
     const expected = normalizeCss(optimize(tailwind.build(testCase.candidates), { minify: true }).code)
     const inputPath = join(dir, `${safeName(testCase.name)}.html`)
     await writeFile(inputPath, `<style>${testCase.css}</style><div class="${testCase.candidates.join(' ')}"></div>`)

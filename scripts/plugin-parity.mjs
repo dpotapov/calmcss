@@ -4,13 +4,13 @@ import { join } from 'node:path'
 import { compile } from 'tailwindcss'
 import { optimize } from '@tailwindcss/node'
 import { spawnFile } from './process.mjs'
+import { loadTailwindStylesheet, tailwindUtilitiesImport } from './tailwind-stylesheet-loader.mjs'
 
 const candidates = JSON.parse(await readFile('test/plugin_candidates.json', 'utf8'))
 const maxDiffs = Number.parseInt(process.env.CALMCSS_PARITY_DIFFS ?? '20', 10)
 
 await spawnFile('zig', ['build'], { stdio: 'inherit' })
 
-const pluginCss = '@plugin "@tailwindcss/forms";@plugin "@tailwindcss/typography";@tailwind utilities;'
 const dir = await mkdtemp(join(tmpdir(), 'calmcss-plugin-parity-'))
 let pass = 0
 let fail = 0
@@ -18,7 +18,11 @@ const diffs = []
 
 try {
   for (const candidate of candidates) {
-    const tailwind = await compile(pluginCss, { loadModule })
+    const pluginCss = pluginInputForCandidate(candidate)
+    const tailwind = await compile(pluginCss, {
+      loadModule,
+      loadStylesheet: loadTailwindStylesheet,
+    })
     const expected = normalizeCss(optimize(tailwind.build([candidate]), { minify: true }).code)
     const inputPath = join(dir, `${safeName(candidate)}.html`)
     await writeFile(inputPath, `<div class="${candidate}"></div>`)
@@ -55,6 +59,16 @@ async function loadModule(id, base, resourceHint) {
   void resourceHint
   const module = await import(id)
   return { path: id, base: '', module: module.default ?? module }
+}
+
+function pluginInputForCandidate(candidate) {
+  if (candidate.startsWith('form-')) {
+    return `@plugin "@tailwindcss/forms";${tailwindUtilitiesImport}`
+  }
+  if (candidate === 'prose' || candidate.startsWith('prose-')) {
+    return `@plugin "@tailwindcss/typography";${tailwindUtilitiesImport}`
+  }
+  throw new Error(`unknown plugin candidate family: ${candidate}`)
 }
 
 function normalizeCss(css) {

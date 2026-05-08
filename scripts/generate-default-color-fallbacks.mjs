@@ -1,18 +1,22 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { compile } from 'tailwindcss'
 import { optimize } from '@tailwindcss/node'
+import {
+  loadTailwindStylesheet,
+  tailwindThemeUtilitiesImport,
+  themeCss,
+} from './tailwind-stylesheet-loader.mjs'
 
 const outPath = process.argv[2] ?? 'src/default_color_fallbacks.zig'
-const themePath = fileURLToPath(import.meta.resolve('tailwindcss/theme.css'))
-const themeCss = await readFile(themePath, 'utf8')
 const names = [...new Set([...themeCss.matchAll(/--color-[a-z0-9-]+(?=\s*:)/g)].map((match) => match[0]))].sort()
 
 const entries = []
 for (const name of names) {
   const candidate = `bg-${name.slice('--color-'.length)}/50`
-  const tailwind = await compile(`${themeCss}\n@tailwind utilities;`)
+  const tailwind = await compile(tailwindThemeUtilitiesImport, {
+    loadStylesheet: loadTailwindStylesheet,
+  })
   const css = optimize(tailwind.build([candidate]), { minify: true }).code
   const match = css.match(/background-color:(#[0-9a-fA-F]{8})/)
   if (!match) continue

@@ -1,10 +1,10 @@
 import { readFile, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { compile } from 'tailwindcss'
 import { optimize } from '@tailwindcss/node'
 import { spawnFile } from './process.mjs'
+import { loadTailwindStylesheet, tailwindThemeUtilitiesImport } from './tailwind-stylesheet-loader.mjs'
 
 const casesPath = process.env.CALMCSS_PARITY_SETS ?? 'test/parity_sets.json'
 const cases = JSON.parse(await readFile(casesPath, 'utf8'))
@@ -12,9 +12,7 @@ const maxDiffs = Number.parseInt(process.env.CALMCSS_PARITY_DIFFS ?? '20', 10)
 
 await spawnFile('zig', ['build'], { stdio: 'inherit' })
 
-const themePath = fileURLToPath(import.meta.resolve('tailwindcss/theme.css'))
-const themeCss = await readFile(themePath, 'utf8')
-const tailwindInput = `${themeCss}\n@tailwind utilities;`
+const tailwindInput = tailwindThemeUtilitiesImport
 const dir = await mkdtemp(join(tmpdir(), 'calmcss-parity-sets-'))
 
 let pass = 0
@@ -28,7 +26,7 @@ try {
       throw new Error(`parity set "${testCase.name}" must define a candidates array`)
     }
 
-    const tailwind = await compile(tailwindInput)
+    const tailwind = await compile(tailwindInput, { loadStylesheet: loadTailwindStylesheet })
     const expected = normalizeCss(optimize(tailwind.build(candidates), { minify: true }).code)
     const inputPath = join(dir, `${safeName(testCase.name)}.html`)
     await writeFile(inputPath, `<div class="${candidates.join(' ')}"></div>`)

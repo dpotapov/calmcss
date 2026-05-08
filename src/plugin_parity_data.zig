@@ -332,9 +332,7 @@ pub const part_refs = [_]u32{
     18889,
     18998,
     19100,
-    2147483648,
     19204,
-    2147483648,
     20109,
     20159,
     20278,
@@ -377,7 +375,6 @@ pub const part_refs = [_]u32{
     25681,
     25815,
     25923,
-    2147483648,
     26033,
     26082,
     26201,
@@ -420,7 +417,6 @@ pub const part_refs = [_]u32{
     31622,
     31766,
     31874,
-    2147483648,
 };
 
 pub const part_lens = [_]u16{
@@ -538,9 +534,7 @@ pub const part_lens = [_]u16{
     108,
     101,
     103,
-    6010,
     904,
-    6010,
     49,
     118,
     170,
@@ -583,7 +577,6 @@ pub const part_lens = [_]u16{
     133,
     107,
     109,
-    6010,
     48,
     118,
     170,
@@ -626,7 +619,6 @@ pub const part_lens = [_]u16{
     143,
     107,
     109,
-    6010,
 };
 
 pub const entries = [_]Entry{
@@ -634,10 +626,10 @@ pub const entries = [_]Entry{
     .{ .candidate_start = 14, .candidate_len = 10, .part_start = 9, .part_len = 17 },
     .{ .candidate_start = 25, .candidate_len = 10, .part_start = 26, .part_len = 6 },
     .{ .candidate_start = 36, .candidate_len = 11, .part_start = 32, .part_len = 5 },
-    .{ .candidate_start = 48, .candidate_len = 5, .part_start = 37, .part_len = 78 },
-    .{ .candidate_start = 54, .candidate_len = 12, .part_start = 115, .part_len = 2 },
-    .{ .candidate_start = 67, .candidate_len = 8, .part_start = 117, .part_len = 43 },
-    .{ .candidate_start = 76, .candidate_len = 8, .part_start = 160, .part_len = 43 },
+    .{ .candidate_start = 48, .candidate_len = 5, .part_start = 37, .part_len = 77 },
+    .{ .candidate_start = 54, .candidate_len = 12, .part_start = 114, .part_len = 1 },
+    .{ .candidate_start = 67, .candidate_len = 8, .part_start = 115, .part_len = 42 },
+    .{ .candidate_start = 76, .candidate_len = 8, .part_start = 157, .part_len = 42 },
 };
 
 pub fn candidate(entry: Entry) []const u8 {
