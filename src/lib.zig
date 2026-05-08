@@ -7,7 +7,7 @@ const builtin_theme_css = @embedFile("theme.css");
 const builtin_preflight_css = @embedFile("preflight.css");
 const builtin_theme_preflight_css = @embedFile("preflight.theme.css");
 
-pub const version = "0.3.0";
+pub const version = "0.3.1";
 
 const theme_root_marker = "/*!calmcss-theme-root*/";
 
