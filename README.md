@@ -126,12 +126,12 @@ so runtimes can update a single file and re-render the final CSS.
 
 CalmCSS exposes two importable Go packages with the same basic shape:
 
-- `github.com/calmcss/calmcss/go/calmnative` uses CGO and links the Zig static
+- `github.com/dpotapov/calmcss/go/calmnative` uses CGO and links the Zig static
   library. Prebuilt static archives are bundled for Linux amd64/arm64, macOS
   arm64, and Windows amd64/arm64, so users on those targets do not need to
   install Zig. CGO must still be enabled and a C linker/compiler must be
   available.
-- `github.com/calmcss/calmcss/go/calmwasm` does not use CGO. It runs
+- `github.com/dpotapov/calmcss/go/calmwasm` does not use CGO. It runs
   `calmcss.wasm` with wazero, and callers pass the WASM bytes explicitly.
 
 Native CGO package:
@@ -142,7 +142,7 @@ package main
 import (
 	"os"
 
-	"github.com/calmcss/calmcss/go/calmnative"
+	"github.com/dpotapov/calmcss/go/calmnative"
 )
 
 func main() {
@@ -163,7 +163,7 @@ import (
 	"context"
 	"os"
 
-	"github.com/calmcss/calmcss/go/calmwasm"
+	"github.com/dpotapov/calmcss/go/calmwasm"
 )
 
 func main() {
@@ -258,6 +258,31 @@ on macOS arm64:
 
 Speedup is calculated as official Tailwind JS time divided by implementation
 time, so values above `1.00x` are faster than the official implementation.
+
+### Bootstrap benchmark (Go + CGO, real-world workload)
+
+The `BenchmarkBootstrap` test in `go/calmnative/` measures the full
+server-startup cycle: create a compiler, feed every content file via
+`PutChunk`, and call `Render` once. This mirrors what a server does on
+startup when it scans its template tree to build the initial CSS bundle.
+
+Run against the orc-server `web/` tree (120 chunks, ~1 MB total) on
+Apple M3 Pro:
+
+```
+go test ./go/calmnative/ -bench=BenchmarkBootstrap -benchtime=5x \
+    -run=^$ -calmcss.fixtures=/path/to/web
+
+BenchmarkBootstrap-12                    5    93 ms/op   62 KB/op   122 allocs/op
+BenchmarkBootstrapBreakdown/PutChunkAll  5   0.09 ms/op
+BenchmarkBootstrapBreakdown/Render       5    93 ms/op
+```
+
+Prior to v0.3.0 this was ~12–20 s on the same workload (a 120–200× regression
+from expected). The fix precomputes `@theme`/`@utility`/`@custom-variant`
+block ranges once per chunk and uses a monotonic cursor to answer coverage
+queries in amortised O(1) instead of scanning the entire content at every
+byte position.
 
 ## Motivation
 

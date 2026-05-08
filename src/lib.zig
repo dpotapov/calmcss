@@ -7,7 +7,7 @@ const builtin_theme_css = @embedFile("theme.css");
 const builtin_preflight_css = @embedFile("preflight.css");
 const builtin_theme_preflight_css = @embedFile("preflight.theme.css");
 
-pub const version = "0.1.0";
+pub const version = "0.3.0";
 
 const theme_root_marker = "/*!calmcss-theme-root*/";
 
@@ -75,8 +75,13 @@ const SourceRange = struct {
 const Compiler = struct {
     allocator: std.mem.Allocator,
     options: CompileOptions,
-    candidates: std.ArrayList([]const u8) = .empty,
-    negated_source_candidates: std.ArrayList([]const u8) = .empty,
+    // candidates uses an ordered hash-map so dedup is O(1) per insert while
+    // keys() preserves insertion order for stable sorting downstream. The
+    // previous std.ArrayList implementation did a linear scan on every
+    // addCandidate call, turning the end-to-end render into O(N*M) over all
+    // tokens in every input chunk.
+    candidates: std.StringArrayHashMapUnmanaged(void) = .empty,
+    negated_source_candidates: std.StringArrayHashMapUnmanaged(void) = .empty,
     theme_variables: std.ArrayList(ThemeVariable) = .empty,
     theme_keyframes: std.ArrayList(ThemeKeyframes) = .empty,
     unset_theme_wildcards: std.ArrayList([]const u8) = .empty,
@@ -135,6 +140,19 @@ const Compiler = struct {
 
     fn collectContent(self: *Compiler, content: []const u8, is_css_chunk: bool) !void {
         const css_mode = is_css_chunk or looksLikeCssChunk(content);
+
+        // Pre-compute the byte ranges covered by @theme / @utility /
+        // @custom-variant at-rule blocks. The inner loop hits this check at
+        // (almost) every byte; without precomputation each check did a full
+        // std.mem.indexOf scan over the entire content per @-rule name,
+        // turning the tokenizer into O(N²) over the input length. For a 1 MB
+        // bundle with no such rules that meant ~3 GB of pointless scanning
+        // per chunk and tens of seconds of wall time.
+        var def_blocks: std.ArrayList(Range) = .empty;
+        defer def_blocks.deinit(self.allocator);
+        try collectDefinitionBlocks(self.allocator, content, &def_blocks);
+        var def_cursor: usize = 0;
+
         var i: usize = 0;
         while (i < content.len) {
             if (css_mode and skipCssCommentOrStringAt(content, &i)) continue;
@@ -142,7 +160,7 @@ const Compiler = struct {
                 i = end;
                 continue;
             }
-            if (definitionBlockEndCovering(content, i)) |end| {
+            if (definitionBlockEndAtCursor(def_blocks.items, &def_cursor, i)) |end| {
                 i = end;
                 continue;
             }
@@ -175,7 +193,7 @@ const Compiler = struct {
                 i = end;
                 continue;
             }
-            if (definitionBlockEndCovering(content, i)) |end| {
+            if (definitionBlockEndAtCursor(def_blocks.items, &def_cursor, i)) |end| {
                 i = end;
                 continue;
             }
@@ -300,10 +318,7 @@ const Compiler = struct {
             try self.addCandidate(candidate);
             return;
         }
-        for (self.negated_source_candidates.items) |seen| {
-            if (std.mem.eql(u8, seen, candidate)) return;
-        }
-        try self.negated_source_candidates.append(self.allocator, candidate);
+        _ = try self.negated_source_candidates.getOrPut(self.allocator, candidate);
     }
 
     fn collectBuiltinThemeImports(self: *Compiler, content: []const u8) !void {
@@ -356,17 +371,11 @@ const Compiler = struct {
         const token = cleanToken(raw_token);
         if (self.sourceCandidateIsNegated(token)) return;
         if (token.len == 0 or (!looksLikeCandidate(token) and !self.hasCustomUtilityCandidate(token))) return;
-        for (self.candidates.items) |seen| {
-            if (std.mem.eql(u8, seen, token)) return;
-        }
-        try self.candidates.append(self.allocator, token);
+        _ = try self.candidates.getOrPut(self.allocator, token);
     }
 
     fn sourceCandidateIsNegated(self: *Compiler, candidate: []const u8) bool {
-        for (self.negated_source_candidates.items) |negated| {
-            if (std.mem.eql(u8, negated, candidate)) return true;
-        }
-        return false;
+        return self.negated_source_candidates.contains(candidate);
     }
 
     fn hasCustomUtilityCandidate(self: *Compiler, raw: []const u8) bool {
@@ -397,7 +406,7 @@ const Compiler = struct {
     }
 
     fn render(self: *Compiler) ![]u8 {
-        std.mem.sort([]const u8, self.candidates.items, self, candidateLessThan);
+        std.mem.sort([]const u8, self.candidates.keys(), self, candidateLessThan);
         self.utilities_important = self.utilitiesEntrypointIsImportant();
 
         var out: std.ArrayList(u8) = .empty;
@@ -405,7 +414,7 @@ const Compiler = struct {
 
         var utilities: std.ArrayList(u8) = .empty;
         defer utilities.deinit(self.allocator);
-        for (self.candidates.items) |candidate| {
+        for (self.candidates.keys()) |candidate| {
             if (self.sourceCandidateIsNegated(candidate)) continue;
             try renderCandidate(self, &utilities, candidate);
         }
@@ -1911,6 +1920,47 @@ fn definitionBlockEndCovering(input: []const u8, index: usize) ?usize {
     if (atRuleBlockEndCovering(input, index, "@theme")) |end| return end;
     if (atRuleBlockEndCovering(input, index, "@utility")) |end| return end;
     return atRuleBlockEndCovering(input, index, "@custom-variant");
+}
+
+const Range = struct { start: usize, end: usize };
+
+// collectDefinitionBlocks walks the content once and records every
+// @theme/@utility/@custom-variant block's byte range. The result is sorted by
+// start because we scan @-rule names left-to-right per name. Within the same
+// name the matches are already ordered, but interleaving names can break
+// global ordering, so we sort once at the end.
+fn collectDefinitionBlocks(allocator: std.mem.Allocator, input: []const u8, out: *std.ArrayList(Range)) !void {
+    const names = [_][]const u8{ "@theme", "@utility", "@custom-variant" };
+    inline for (names) |name| {
+        var search_start: usize = 0;
+        while (std.mem.indexOf(u8, input[search_start..], name)) |rel| {
+            const at = search_start + rel;
+            const name_end = at + name.len;
+            if (name_end < input.len and isNameChar(input[name_end])) {
+                search_start = at + 1;
+                continue;
+            }
+            const end = scanCssBlock(input, at) orelse break;
+            try out.append(allocator, .{ .start = at, .end = end });
+            search_start = end;
+        }
+    }
+    std.mem.sort(Range, out.items, {}, struct {
+        fn lessThan(_: void, a: Range, b: Range) bool {
+            return a.start < b.start;
+        }
+    }.lessThan);
+}
+
+// definitionBlockEndAtCursor returns the end of the @-rule block that covers
+// `index`, using a monotonic cursor into a pre-sorted ranges list. Cost per
+// call is amortized O(1) over a full collectContent pass.
+fn definitionBlockEndAtCursor(blocks: []const Range, cursor: *usize, index: usize) ?usize {
+    while (cursor.* < blocks.len and blocks[cursor.*].end <= index) cursor.* += 1;
+    if (cursor.* < blocks.len and blocks[cursor.*].start <= index and index < blocks[cursor.*].end) {
+        return blocks[cursor.*].end;
+    }
+    return null;
 }
 
 fn atRuleBlockEndCovering(input: []const u8, index: usize, name: []const u8) ?usize {
@@ -13014,6 +13064,28 @@ test "extracts common utilities and variants" {
     try std.testing.expect(std.mem.indexOf(u8, css, ".p-4{padding:calc(var(--spacing)") != null);
     try std.testing.expect(std.mem.indexOf(u8, css, "@media (min-width:48rem){@media (hover:hover){.md\\:hover\\:bg-blue-500:hover{background-color:var(--color-blue-500);}}}") != null);
     try std.testing.expect(std.mem.indexOf(u8, css, ".font-bold{--tw-font-weight:var(--font-weight-bold);font-weight:var(--font-weight-bold)") != null);
+}
+
+// Regression test for the O(N^2) bug fixed by precomputing definition block
+// ranges in collectContent. The bug manifested as 10-20s render time on
+// ~1MB of HTML inputs because every byte position scanned the entire input
+// looking for @theme/@utility/@custom-variant. Verify here that the cursor
+// based check still skips past the at-rule body and resumes candidate
+// extraction afterwards.
+test "definition block scanning is O(n)" {
+    const input =
+        \\<div class="p-4"></div>
+        \\@utility custom-thing {
+        \\  display: flex;
+        \\  padding: 1rem;
+        \\}
+        \\<div class="text-sm custom-thing"></div>
+    ;
+    const css = try compileAlloc(std.testing.allocator, &.{.{ .name = "index.html", .content = input }}, .{});
+    defer std.testing.allocator.free(css);
+    try std.testing.expect(std.mem.indexOf(u8, css, ".p-4{padding:calc(var(--spacing)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, css, ".text-sm") != null);
+    try std.testing.expect(std.mem.indexOf(u8, css, ".custom-thing") != null);
 }
 
 test "chunk update replaces content" {
