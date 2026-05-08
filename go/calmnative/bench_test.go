@@ -13,12 +13,11 @@ import (
 )
 
 // fixtureRoot is the directory whose .chtml/.html/.js files are fed to the
-// compiler when running the orc-server-like bootstrap benchmark. Override
-// with --calmcss.fixtures=/path/to/web to point at a real workload.
+// compiler during bootstrap benchmarks. Override with
+// --calmcss.fixtures=/path/to/web to point at a real workload.
 var fixtureRoot = flag.String("calmcss.fixtures", "", "directory with .chtml/.html/.js fixtures for bootstrap benchmarks")
 
-// chunk is a name+content pair, mirroring what orc-server feeds into the
-// compiler via PutChunk.
+// chunk is a name+content pair passed to the compiler via PutChunk.
 type chunk struct {
 	name    string
 	content []byte
@@ -59,7 +58,7 @@ func loadFixtures(tb testing.TB, dir string) []chunk {
 	return chunks
 }
 
-// Synthetic fixtures roughly matching the orc-server web/ tree: ~120 files,
+// Synthetic fixtures for a typical server template tree: ~120 files,
 // total ~1MB, with the largest being a few hundred KB JS bundles.
 type syntheticOpts struct {
 	files     int
@@ -120,9 +119,8 @@ func itoa(n int) string {
 	return string(buf[i:])
 }
 
-// BenchmarkBootstrap runs the full orc-server-style bootstrap: create a
-// compiler, feed every chunk via PutChunk, then call Render. This is what
-// CalmCSSService.Bootstrap does on web service startup.
+// BenchmarkBootstrap measures the full server-startup cycle: create a compiler,
+// feed every chunk via PutChunk, then call Render once.
 func BenchmarkBootstrap(b *testing.B) {
 	chunks := loadFixtures(b, *fixtureRoot)
 	if chunks == nil {
