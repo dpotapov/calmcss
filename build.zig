@@ -21,10 +21,15 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(exe);
 
+    // ReleaseFast keeps the CGO host binary fast (CalmCSS is CPU-heavy text
+    // scanning + CSS rendering; ReleaseSmall is roughly 2-3x slower). The
+    // size cost over ReleaseSmall is small (~hundreds of KB) and well worth
+    // it on a host-side library. The wasm build below stays on ReleaseSmall
+    // so the embeddable .wasm artifact stays compact.
     const static_lib_mod = b.addModule("calmcss_static", .{
         .root_source_file = b.path("src/lib.zig"),
         .target = target,
-        .optimize = .ReleaseSmall,
+        .optimize = .ReleaseFast,
         .strip = true,
     });
 
